@@ -1,0 +1,27 @@
+{
+  "name": "@lockerdome/coral.js",
+  "license": "MIT",
+  "version": "1.0.0",
+  "bin": {
+    "coral": "./cli/cli.js"
+  },
+  "scripts": {
+    "test": "mocha tests/domeplates"
+  },
+  "dependencies": {
+    "browserify": "~16.2.3",
+    "esprima": "~2.7.3",
+    "estraverse": "~1.5.0",
+    "html-entities": "x.x.x",
+    "inherits": "~2.0.1",
+    "mkdirp": "~0.3.5",
+    "optimist": "~0.5.2",
+    "suggest-it": "0.0.1",
+    "tosource": "~0.1.1",
+    "uglify-js": "~2.4.24",
+    "es6-promise": "~4.2.5"
+  },
+  "devDependencies": {
+    "chai": "~1.6.0"
+  }
+}

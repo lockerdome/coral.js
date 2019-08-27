@@ -1,0 +1,10 @@
+{
+  "evil": true,
+  "browser": true,
+  "node": true,
+  "eqnull": true,
+  "eqeqeq": true,
+  "strict": true,
+  "undef": true,
+  "globalstrict": true
+}
