@@ -37,6 +37,7 @@ Coral.js is an open source project of [LockerDome](https://lockerdome.com). It i
 Visit and download our [coral.js-tutorials](https://github.com/lockerdome/coral.js-tutorials) repo. It contains:
   * A sample Hello, world! app.
   * A variety of demos which showcase some of the different features of the Coral.js framework.
+    * [See a live version of our demo app here.](https://lockerdome.github.io/coral.js-tutorials/demos/static/)
 
 # <a name="using_coral"></a> Using Coral.js
 
@@ -201,6 +202,8 @@ var settings = {
 # <a name="learning_more"></a> Learning More
 
 To see more of Coral.js's features and get up to speed on building your own single page web app with Coral.js, visit the [coral.js-tutorials](https://github.com/lockerdome/coral.js-tutorials) repo and look through the demo app.
+
+You can also visit a [live version of the demo app here.](https://lockerdome.github.io/coral.js-tutorials/demos/static/)
 
 # <a name="contributing"></a> Contributing
 
