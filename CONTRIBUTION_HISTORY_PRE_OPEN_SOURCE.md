@@ -153,3 +153,4 @@ For all those involved, please list your name and a link to your github account 
 
 Preston Skupinski ([@pskupinski](https://github.com/pskupinski))
 Margaret Liu ([@margsliu](https://github.com/margsliu))
+Perrin Westrich ([@CrypticSwarm](https://github.com/CrypticSwarm))
