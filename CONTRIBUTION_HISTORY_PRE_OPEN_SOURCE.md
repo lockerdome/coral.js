@@ -151,4 +151,5 @@ It is thanks to all these contributions that the Coral.js framework has reached 
 
 For all those involved, please list your name and a link to your github account below:
 
+Preston Skupinski ([@pskupinski](https://github.com/pskupinski))
 
