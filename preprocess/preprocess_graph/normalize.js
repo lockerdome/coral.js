@@ -306,7 +306,10 @@ function elementProcess(prefix) {
 function dynamicElementListsProcess(prefix) {
   return sequence(
     replace(prefix + '.dynamicElementLists', '!object', defaultToObj),
-    replace(prefix + '.dynamicElementLists.*.model', '!string', unexpected('Expected string as model property in dynamic element')),
+    replace(prefix + '.dynamicElementLists.*.model', '!string', function (model, type, path) {
+      if (typeof model === 'function') return toInlineFunctionObject(model);
+      unexpected('Expected string as model property in dynamic element')(model, type, path);
+    }),
     replace(prefix + '.dynamicElementLists.*', 'object', function (list) {
       if (!list.item) return list;
 
@@ -327,6 +330,7 @@ function dynamicElementListsProcess(prefix) {
     }),
     replace(prefix + '.dynamicElementLists.*.map', '!function', unexpected('Expected function as map property in dynamic element'))
   );
+
 }
 
 function callbacksProcess(prefix) {

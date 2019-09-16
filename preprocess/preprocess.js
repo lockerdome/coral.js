@@ -196,6 +196,33 @@ function base_preprocess (cData, hook_manager, source, root_element, callback) {
     });
   })('models.*')(source);
 
+  (function rewrite_inline_functions_used_as_dynamic_elment_list_models (element_hash) {
+    var i;
+    for (var element_name in element_hash) {
+      var element = element_hash[element_name];
+      var element_local_refs = element.localRefs;
+      for (i = 0; i !== element_local_refs.length; ++i) {
+        var element_local_ref = element_local_refs[i];
+        if (!element_local_ref.value) continue;
+        if (element_local_ref.type === 'dynamicElementLists') {
+          var dynamic_element_list_model = element_local_ref.value.model;
+          if (dynamic_element_list_model.type && dynamic_element_list_model.type === '!inline') {
+            var intermediate_model_name = '$$' + element_local_ref.name + '_intermediate';
+            element.models[intermediate_model_name] = dynamic_element_list_model;
+            var intermediate_model_local_ref = {
+              type: 'models',
+              value: dynamic_element_list_model,
+              name: intermediate_model_name
+            };
+            element.localRefsHash[intermediate_model_name] = intermediate_model_local_ref;
+            element.localRefs.push(intermediate_model_local_ref);
+            element_local_ref.value.model = intermediate_model_name;
+          }
+        }
+      }
+    }
+  })(source.elements);
+
   source.elements = process_iterate_array_virtual_refs(source.elements);
 
   (function generate_element_view_template_ast (element_hash) {
