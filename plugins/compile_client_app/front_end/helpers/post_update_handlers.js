@@ -170,7 +170,6 @@ module.exports = function (register_global_helper) {
           updated_class_value += scope.state[attribute_input_symbol] || '';
         }
 
-        var current_value = $$HELPERS.convert_to_attribute_value$$(value);
         var value_classes = updated_class_value.split(' ').filter(function (classValue) {
           return !!classValue;
         });
