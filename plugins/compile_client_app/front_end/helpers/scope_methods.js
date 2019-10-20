@@ -248,21 +248,27 @@ module.exports = function (register_scope_method) {
         var attribute_input_value;
         var attribute_input_symbols = attribute_symbols.slice(1);
         var single_attribute_variable = attribute_input_symbols.length === 1;
+        var j;
+        var attribute_symbol;
 
-        for (var j = 0; j < attribute_input_symbols.length; ++j) {
-          var attribute_symbol = attribute_input_symbols[j];
+        for (j = 0; j < attribute_input_symbols.length; ++j) {
+          attribute_symbol = attribute_input_symbols[j];
 
-          var symbol_metadata = scope_context['$$SCOPE_METHODS.get_scope_symbol_metadata$$'](attribute_symbol);
           attribute_input_value = scope_context.state[attribute_symbol];
           var attribute_converted_input_value = $$HELPERS.convert_to_attribute_value$$(attribute_input_value);
           if (attribute_converted_input_value) {
             attribute_value += attribute_converted_input_value;
           }
+        }
+
+        for (j = 0; j < attribute_input_symbols.length; ++j) {
+          attribute_symbol = attribute_input_symbols[j];
+          var symbol_metadata = scope_context['$$SCOPE_METHODS.get_scope_symbol_metadata$$'](attribute_symbol);
 
           if (attribute_name === 'class') {
             symbol_metadata.add_post_update_handler(
-              $$HELPERS.generate_dom_element_class_post_update_handler$$(attribute_converted_input_value),
-              assign_to_symbol
+              $$HELPERS.generate_dom_element_class_post_update_handler$$(attribute_value),
+              assign_to_symbol+attribute_input_symbols
             );
           } else if (attribute_name === 'style') {
             symbol_metadata.add_post_update_handler(
