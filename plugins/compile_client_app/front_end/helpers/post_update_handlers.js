@@ -167,7 +167,7 @@ module.exports = function (register_global_helper) {
         var i;
         for (i = 1; i < symbols.length; ++i) {
           var attribute_input_symbol = symbols[i];
-          updated_class_value += scope.state[attribute_input_symbol] || '';
+          updated_class_value += $$HELPERS.convert_to_attribute_value$$(scope.state[attribute_input_symbol]);
         }
 
         var value_classes = updated_class_value.split(' ').filter(function (classValue) {
