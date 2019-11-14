@@ -155,21 +155,27 @@ module.exports = function (register_global_helper) {
 
   register_global_helper(
     'generate_dom_element_class_post_update_handler',
-    function (initial_attribute_input_value) {
-      var last_value_classes = initial_attribute_input_value.split(' ').filter(function (classValue) {
+    function (initial_attribute_value) {
+      var last_value_classes = initial_attribute_value.split(' ').filter(function (classValue) {
         return !!classValue;
       });
 
-      return function (value, scope, dom_element_symbol) {
-        var current_value = $$HELPERS.convert_to_attribute_value$$(value);
-        var value_classes = current_value.split(' ').filter(function (classValue) {
+      return function (value, scope, symbols) {
+        var dom_element = scope.state[symbols[0]];
+
+        var updated_class_value = '';
+        var i;
+        for (i = 1; i < symbols.length; ++i) {
+          var attribute_input_symbol = symbols[i];
+          updated_class_value += $$HELPERS.convert_to_attribute_value$$(scope.state[attribute_input_symbol]);
+        }
+
+        var value_classes = updated_class_value.split(' ').filter(function (classValue) {
           return !!classValue;
         });
 
-        var dom_element = scope.state[dom_element_symbol];
         var current_classes = dom_element.className.split(' ');
         var updated_classes;
-        var i;
 
         if (last_value_classes.length) {
           updated_classes = [];
