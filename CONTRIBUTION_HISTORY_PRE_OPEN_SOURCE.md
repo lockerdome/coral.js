@@ -142,15 +142,3 @@ Margaret Liu ([@margsliu](https://github.com/margsliu))
 Perrin Westrich ([@CrypticSwarm](https://github.com/CrypticSwarm))
   - Cleaned up the IR generation code and hook manager code
   - Pulled LockerDome specific functionality out of the core framework
-
-
-## Thank You
-
-
-It is thanks to all these contributions that the Coral.js framework has reached the milestone of being open sourced.
-
-For all those involved, please list your name and a link to your github account below:
-
-Preston Skupinski ([@pskupinski](https://github.com/pskupinski))
-Margaret Liu ([@margsliu](https://github.com/margsliu))
-Perrin Westrich ([@CrypticSwarm](https://github.com/CrypticSwarm))
