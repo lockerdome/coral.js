@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-var optimist = require('optimist');
+var yargs = require('yargs');
 
 var walker = require('./lib/directory_walker');
 
@@ -14,7 +14,7 @@ var generate_scopes = require('../ir_gen/generate_scopes');
 var Compiler = require('../compiler');
 var HookManager = require('../hook_manager.js');
 
-var argv = optimist.string(['_', '0']).argv;
+var argv = yargs.string(['_', '0']).argv;
 
 var settings_validator = require('./settings_validator');
 var settings_path = path.resolve(process.cwd(), argv.s);
