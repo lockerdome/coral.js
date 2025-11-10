@@ -8,7 +8,7 @@ var IRDOMPlacementType = require('../types/dom_placement');
 var is_type_contained = require('../is_type_contained');
 var CoralTypeError = require('../coral_type_error');
 
-var htmlEntities = new (require('html-entities').XmlEntities)();
+var htmlEntities = require('html-entities');
 
 /**
  * @constructor
