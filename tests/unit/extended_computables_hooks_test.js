@@ -644,6 +644,242 @@ describe('Extended Computables Hooks', function() {
     });
   });
 
+
+  describe('IterateArray', function() {
+    var IterateArray;
+    var VirtualArrayItem;
+    var VirtualIntermediate;
+    var Constant;
+
+    beforeEach(function() {
+      IterateArray = require('../../ir/computables/iterate_array');
+      VirtualArrayItem = require('../../ir/computables/virtual_array_item');
+      VirtualIntermediate = require('../../ir/computables/virtual_intermediate');
+      Constant = require('../../ir/computables/constant');
+      // Load extended implementation
+      require('../../plugins/compile_client_app/extended_computables/iterate_array');
+    });
+
+    // Helper to create a minimal IterateArray for testing
+    function createMinimalIterateArray(scope) {
+      var IRAnyType = require('../../ir/types/any');
+      var IRExactValueType = require('../../ir/types/exact_value');
+      
+      var initialIntermediate = new Constant(scope, null);
+      var arrayComputable = new Constant(scope, []);
+      var itemVirtual = new VirtualArrayItem(scope, arrayComputable);
+      var intermediateVirtual = new VirtualIntermediate(scope, new IRAnyType());
+      var identityFunction = function(a, b) { return a === b; };
+
+      var iterateArray = new IterateArray(
+        scope,
+        initialIntermediate,
+        arrayComputable,
+        itemVirtual,
+        intermediateVirtual,
+        identityFunction
+      );
+
+      // Mock the internal state to avoid "no choices" error
+      // This is acceptable for unit testing individual hooks
+      iterateArray._choice_types = [new IRExactValueType('default')];
+      iterateArray._choice_scopes = [new Scope('test_choice_scope')];
+      iterateArray._choice_output_paths = ['result'];
+      iterateArray._choice_computable_indexes = [[]];
+
+      return iterateArray;
+    }
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return true for IterateArray', function() {
+        var scope = createBasicScope();
+        var iterateArray = createMinimalIterateArray(scope);
+
+        var result = iterateArray.is_needed_for_async_pre_initialize_phase();
+
+        assert.isTrue(result, 'IterateArray needs async pre-initialize phase');
+      });
+    });
+
+    describe('is_needed_for_sync_initialize_phase', function() {
+      it('should return true for IterateArray', function() {
+        var scope = createBasicScope();
+        var iterateArray = createMinimalIterateArray(scope);
+
+        var result = iterateArray.is_needed_for_sync_initialize_phase();
+
+        assert.isTrue(result, 'IterateArray needs sync initialize phase');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate async internal symbol for scope array', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        // Add allocate_async_internal_symbol and allocate_sync_internal_symbol to mock
+        var asyncInternalCounter = 0;
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_async_internal_symbol = function(name) {
+          return 'ASYNC_INT_' + (asyncInternalCounter++) + '_' + name;
+        };
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_INT_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        var iterateArray = createMinimalIterateArray(scope);
+
+        var result = iterateArray.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'ASYNC_INT_0_scope_array', 'Should return async internal symbol for scope_array');
+        assert.equal(iterateArray._scope_array_symbol, result, 'Should store scope array symbol');
+      });
+
+      it('should allocate sync internal symbol for final intermediate', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var asyncInternalCounter = 0;
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_async_internal_symbol = function(name) {
+          return 'ASYNC_INT_' + (asyncInternalCounter++) + '_' + name;
+        };
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_INT_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        var iterateArray = createMinimalIterateArray(scope);
+
+        iterateArray.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(iterateArray._field_name_references.after, 'SYNC_INT_0_final_intermediate', 'Should allocate final_intermediate symbol');
+      });
+
+      it('should store field name references', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        mockInstantiationContext.allocate_async_internal_symbol = function(name) {
+          return 'ASYNC_' + name;
+        };
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_' + name;
+        };
+
+        var iterateArray = createMinimalIterateArray(scope);
+
+        iterateArray.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.isObject(iterateArray._field_name_references);
+        assert.property(iterateArray._field_name_references, 'scope_array');
+        assert.property(iterateArray._field_name_references, 'after');
+        assert.equal(iterateArray._field_name_references.scope_array, 'ASYNC_scope_array');
+        assert.equal(iterateArray._field_name_references.after, 'SYNC_final_intermediate');
+      });
+    });
+
+    describe('get_client_side_input_metadata', function() {
+      it('should return metadata object with phase flags', function() {
+        var scope = createBasicScope();
+        var iterateArray = createMinimalIterateArray(scope);
+
+        var metadata = iterateArray.get_client_side_input_metadata(0);
+
+        assert.isObject(metadata);
+        assert.property(metadata, 'is_needed_for_async_pre_initialize_phase');
+        assert.property(metadata, 'is_needed_for_sync_initialize_phase');
+        assert.property(metadata, 'is_needed_for_update_cycle');
+        assert.isBoolean(metadata.is_needed_for_async_pre_initialize_phase);
+        assert.isBoolean(metadata.is_needed_for_sync_initialize_phase);
+        assert.isBoolean(metadata.is_needed_for_update_cycle);
+      });
+
+      it('should return correct metadata for initial intermediate index (0)', function() {
+        var scope = createBasicScope();
+        var iterateArray = createMinimalIterateArray(scope);
+
+        var metadata = iterateArray.get_client_side_input_metadata(0); // INITIAL_INTERMEDIATE_COMPUTABLE_INDEX
+
+        assert.isFalse(metadata.is_needed_for_async_pre_initialize_phase, 'Initial intermediate not needed in async phase');
+        assert.isTrue(metadata.is_needed_for_sync_initialize_phase, 'Initial intermediate needed in sync phase');
+        assert.isFalse(metadata.is_needed_for_update_cycle, 'Initial intermediate not needed in update cycle');
+      });
+
+      it('should return correct metadata for array computable index (1)', function() {
+        var scope = createBasicScope();
+        var iterateArray = createMinimalIterateArray(scope);
+
+        var metadata = iterateArray.get_client_side_input_metadata(1); // ARRAY_COMPUTABLE_INDEX
+
+        assert.isTrue(metadata.is_needed_for_async_pre_initialize_phase, 'Array computable needed in async phase');
+        assert.isTrue(metadata.is_needed_for_sync_initialize_phase, 'Array computable needed in sync phase');
+        // is_needed_for_update_cycle depends on array computable
+        assert.isBoolean(metadata.is_needed_for_update_cycle);
+      });
+
+      it('should return correct metadata for intermediate virtual index (2)', function() {
+        var scope = createBasicScope();
+        var iterateArray = createMinimalIterateArray(scope);
+
+        var metadata = iterateArray.get_client_side_input_metadata(2); // INTERMEDIATE_VIRTUAL_INDEX
+
+        assert.isFalse(metadata.is_needed_for_async_pre_initialize_phase, 'Intermediate virtual not needed in async phase');
+        assert.isTrue(metadata.is_needed_for_sync_initialize_phase, 'Intermediate virtual needed in sync phase');
+        assert.isFalse(metadata.is_needed_for_update_cycle, 'Intermediate virtual not needed in update cycle');
+      });
+    });
+
+    describe('client_side_code_cleanup_hook', function() {
+      it('should return empty string when no choice scopes have cleanup', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        // Add get_cleanup_instructions to mock
+        mockCompilationContext.get_scope_compilation_context = function() {
+          return {
+            get_cleanup_instructions: function() {
+              return [];
+            }
+          };
+        };
+
+        var iterateArray = createMinimalIterateArray(scope);
+        iterateArray._choice_scopes = []; // No choice scopes
+
+        var result = iterateArray.client_side_code_cleanup_hook(mockCompilationContext, mockScopeCompilationContext);
+
+        assert.equal(result, '', 'Should return empty string when no cleanup needed');
+      });
+    });
+
+    describe('Integration with other hooks', function() {
+      it('should properly initialize with reference hook before calling other hooks', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        mockInstantiationContext.allocate_async_internal_symbol = function(name) {
+          return 'ASYNC_' + name;
+        };
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_' + name;
+        };
+
+        var iterateArray = createMinimalIterateArray(scope);
+
+        // Call reference hook first (as would happen in real compilation)
+        iterateArray.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        // Verify state is set up for other hooks
+        assert.isDefined(iterateArray._field_name_references);
+        assert.isDefined(iterateArray._scope_array_symbol);
+      });
+    });
+  });
   describe('Integration tests', function() {
     it('should handle multiple computables with different hook implementations', function() {
       var mockCompilationContext = createMockCompilationContext();
