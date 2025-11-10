@@ -1577,6 +1577,378 @@ describe('Extended Computables Hooks', function() {
       });
     });
   });
+
+  describe('NestedPassthrough', function() {
+    var NestedPassthrough;
+    var Constant;
+
+    beforeEach(function() {
+      NestedPassthrough = require('../../ir/computables/nested_passthrough');
+      Constant = require('../../ir/computables/constant');
+      require('../../plugins/compile_client_app/extended_computables/nested_passthrough');
+    });
+
+    describe('has_client_side_code_initialize_hook', function() {
+      it('should return false when no dependees other than NestedPassthrough', function() {
+        var scope = createBasicScope();
+        var base = new Constant(scope, { field: 'value' });
+        var nested = new NestedPassthrough(base, 'field');
+
+        var result = nested.has_client_side_code_initialize_hook();
+
+        assert.isFalse(result, 'Should return false when no non-NestedPassthrough dependees');
+      });
+
+      it('should return true when has dependees other than NestedPassthrough', function() {
+        var scope = createBasicScope();
+        var base = new Constant(scope, { field: 'value' });
+        var nested = new NestedPassthrough(base, 'field');
+
+        // Mock get_dependee_count and get_dependee to simulate having non-NestedPassthrough dependees
+        nested.get_dependee_count = function() { return 1; };
+        nested.get_dependee = function(index) { return base; };
+
+        var result = nested.has_client_side_code_initialize_hook();
+
+        assert.isTrue(result, 'Should return true when has non-NestedPassthrough dependees');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol when has initialize hook', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { field: 'value' });
+        var nested = new NestedPassthrough(base, 'field');
+
+        // Mock get_dependee methods to make has_client_side_code_initialize_hook return true
+        nested.get_dependee_count = function() { return 1; };
+        nested.get_dependee = function(index) { return base; };
+
+        var result = nested.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+
+      it('should return undefined when no initialize hook', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { field: 'value' });
+        var nested = new NestedPassthrough(base, 'field');
+
+        var result = nested.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.isUndefined(result, 'Should return undefined when no initialize hook');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for nested property access', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { field: 'value' });
+        var nested = new NestedPassthrough(base, 'field');
+        nested._dependees = [base];
+
+        nested.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext, mockScopeCompilationContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.nested_compute$$');
+      });
+
+      it('should allocate global for property path array', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { field: 'value' });
+        var nested = new NestedPassthrough(base, 'field');
+
+        nested.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext, mockScopeCompilationContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 1);
+        assert.deepEqual(globals[0].value, ['field'], 'Should allocate property path array');
+      });
+
+      it('should handle chained nested passthroughs', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { a: { b: 'value' } });
+        var nested1 = new NestedPassthrough(base, 'a');
+        var nested2 = new NestedPassthrough(nested1, 'b');
+
+        nested2.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext, mockScopeCompilationContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.deepEqual(globals[0].value, ['a', 'b'], 'Should collect full property path');
+      });
+    });
+  });
+
+  describe('DynamicNestedPassthrough', function() {
+    var DynamicNestedPassthrough;
+    var Constant;
+
+    beforeEach(function() {
+      DynamicNestedPassthrough = require('../../ir/computables/dynamic_nested_passthrough');
+      Constant = require('../../ir/computables/constant');
+      require('../../plugins/compile_client_app/extended_computables/dynamic_nested_passthrough');
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { field: 'value' });
+        var pathComputable = new Constant(scope, 'field');
+        var dynamic = new DynamicNestedPassthrough(base, pathComputable);
+
+        var result = dynamic.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for dynamic nested access', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { field: 'value' });
+        var pathComputable = new Constant(scope, 'field');
+        var dynamic = new DynamicNestedPassthrough(base, pathComputable);
+
+        dynamic.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext, mockScopeCompilationContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.dynamic_nested_compute$$');
+      });
+
+      it('should include base and path computable references in packed args', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        var base = new Constant(scope, { field: 'value' });
+        var pathComputable = new Constant(scope, 'dynamicField');
+        var dynamic = new DynamicNestedPassthrough(base, pathComputable);
+
+        dynamic.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext, mockScopeCompilationContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        // Should include both computable references
+        assert.include(setupCode[0], 'COMP_REF_');
+      });
+    });
+  });
+
+  describe('CompoundNestedPassthrough', function() {
+    var CompoundNestedPassthrough;
+    var ScopeInstance;
+
+    beforeEach(function() {
+      CompoundNestedPassthrough = require('../../ir/computables/compound_nested_passthrough');
+      ScopeInstance = require('../../ir/computables/scope_instance');
+      require('../../plugins/compile_client_app/extended_computables/compound_nested_passthrough');
+    });
+
+    describe('has_client_side_code_initialize_hook', function() {
+      it('should return false for compound nested passthroughs', function() {
+        var scope = createBasicScope();
+        var targetScope = new Scope('target');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var Constant = require('../../ir/computables/constant');
+        var IRDOMPlacementType = require('../../ir/types/dom_placement');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+
+        // Add output to target scope so it has a compound output type
+        var afterOutput = new VirtualPlacement(targetScope);
+        targetScope.add_output(afterOutput, 'after');
+
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+
+        var compound = new CompoundNestedPassthrough(scopeInstance, 'after');
+
+        var result = compound.has_client_side_code_initialize_hook();
+
+        assert.isFalse(result, 'Compound nested passthroughs do not have initialize hook');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate sync internal symbol for sync field', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = {
+          _get_output_symbol: function() { return null; }
+        };
+        
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_INT_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        var scope = createBasicScope();
+        var targetScope = new Scope('target');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+
+        // Add output to target scope so it has a compound output type
+        var resultOutput = new VirtualPlacement(targetScope);
+        targetScope.add_output(resultOutput, 'result');
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+        scopeInstance._field_name_references = {};
+
+        // Mock get_scope_definition and get_output_by_field_name
+        scopeInstance.get_scope_definition = function() {
+          return {
+            get_output_by_field_name: function() {
+              return {
+                is_needed_for_async_pre_initialize_phase: function() { return false; }
+              };
+            }
+          };
+        };
+
+        var compound = new CompoundNestedPassthrough(scopeInstance, 'result');
+
+        var result = compound.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'SYNC_INT_0_field_output', 'Should allocate sync internal symbol');
+        assert.equal(scopeInstance._field_name_references.result, 'SYNC_INT_0_field_output');
+      });
+
+      it('should reuse existing field reference if available', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = {
+          _get_output_symbol: function() { return null; }
+        };
+
+        var scope = createBasicScope();
+        var targetScope = new Scope('target');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+
+        // Add output to target scope so it has a compound output type
+        var resultOutput = new VirtualPlacement(targetScope);
+        targetScope.add_output(resultOutput, 'result');
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+        scopeInstance._field_name_references = { result: 'EXISTING_REF' };
+
+        var compound = new CompoundNestedPassthrough(scopeInstance, 'result');
+
+        var result = compound.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'EXISTING_REF', 'Should reuse existing field reference');
+      });
+    });
+  });
+
+  describe('ConstantInitializedVariable', function() {
+    var ConstantInitializedVariable;
+
+    beforeEach(function() {
+      ConstantInitializedVariable = require('../../ir/computables/constant_initialized_variable');
+      require('../../plugins/compile_client_app/extended_computables/constant_initialized_variable');
+    });
+
+    describe('has_client_side_code_initialize_hook', function() {
+      it('should return true', function() {
+        var scope = createBasicScope();
+        var variable = new ConstantInitializedVariable(scope, 42);
+
+        var result = variable.has_client_side_code_initialize_hook();
+
+        assert.isTrue(result, 'Constant initialized variables need initialization');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var variable = new ConstantInitializedVariable(scope, 'initial value');
+
+        var result = variable.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for mutable global mapping', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
+
+        var variable = new ConstantInitializedVariable(scope, 'test value');
+
+        variable.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.map_in_mutable_globals$$');
+      });
+
+      it('should allocate global for initial value', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
+
+        var variable = new ConstantInitializedVariable(scope, 123);
+
+        variable.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 1);
+        assert.equal(globals[0].value, 123);
+      });
+
+      it('should handle object initial values', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
+
+        var initialValue = { key: 'value', nested: { prop: 42 } };
+        var variable = new ConstantInitializedVariable(scope, initialValue);
+
+        variable.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.deepEqual(globals[0].value, initialValue);
+      });
+    });
+  });
   describe('Integration tests', function() {
     it('should handle multiple computables with different hook implementations', function() {
       var mockCompilationContext = createMockCompilationContext();
