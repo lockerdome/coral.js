@@ -6,7 +6,7 @@
     "coral": "./cli/cli.js"
   },
   "scripts": {
-    "test": "mocha tests/domeplates"
+    "test": "mocha 'tests/**/*_test.js'"
   },
   "dependencies": {
     "browserify": "~17.0.0",
