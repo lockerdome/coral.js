@@ -26,6 +26,12 @@ describe('Extended Computables Hooks', function() {
       },
       get_scope_compilation_context: function(scope_identity) {
         return createMockScopeCompilationContext();
+      },
+      get_global_helper_symbol: function(helper_name) {
+        return 'HELPER_' + helper_name;
+      },
+      reference_weak_symbol: function(identity) {
+        return 'WEAK_' + identity;
       }
     };
   }
@@ -1267,6 +1273,307 @@ describe('Extended Computables Hooks', function() {
         // Verify state is set up for other hooks
         assert.isDefined(iterateArray._field_name_references);
         assert.isDefined(iterateArray._scope_array_symbol);
+      });
+    });
+  });
+
+  describe('DOMText', function() {
+    var DOMText;
+
+    beforeEach(function() {
+      DOMText = require('../../ir/computables/dom_text');
+      require('../../plugins/compile_client_app/extended_computables/dom_text');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return false for DOM text nodes', function() {
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domText = new DOMText(scope, 'Hello World', placement);
+
+        var result = domText.is_needed_for_async_pre_initialize_phase();
+
+        assert.isFalse(result, 'DOM text nodes should not appear in async pre-initialize phase');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domText = new DOMText(scope, 'Test', placement);
+
+        var result = domText.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for text node creation', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function(index) {
+          return 'INPUT_' + index;
+        };
+        mockCompilationContext.get_global_helper_symbol = function(name) {
+          return 'HELPER_' + name;
+        };
+
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domText = new DOMText(scope, 'Hello World', placement);
+
+        domText.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.sync_compute_no_recompute$$');
+      });
+
+      it('should allocate global for text string', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function() { return 'INPUT'; };
+        mockCompilationContext.get_global_helper_symbol = function() { return 'HELPER'; };
+
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domText = new DOMText(scope, 'Test Text', placement);
+
+        domText.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 1);
+        assert.equal(globals[0].value, 'Test Text');
+      });
+    });
+  });
+
+  describe('DOMVariable', function() {
+    var DOMVariable;
+
+    beforeEach(function() {
+      DOMVariable = require('../../ir/computables/dom_variable');
+      require('../../plugins/compile_client_app/extended_computables/dom_variable');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return false for DOM variable nodes', function() {
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var value = new Constant(scope, 'value');
+        var placement = new VirtualPlacement(scope);
+        var domVariable = new DOMVariable(scope, value, placement);
+
+        var result = domVariable.is_needed_for_async_pre_initialize_phase();
+
+        assert.isFalse(result, 'DOM variable nodes should not appear in async pre-initialize phase');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var Constant = require('../../ir/computables/constant');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var value = new Constant(scope, 'test');
+        var placement = new VirtualPlacement(scope);
+        var domVariable = new DOMVariable(scope, value, placement);
+
+        var result = domVariable.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for variable text creation', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function(index) {
+          return 'INPUT_' + index;
+        };
+
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var value = new Constant(scope, 'dynamic value');
+        var placement = new VirtualPlacement(scope);
+        var domVariable = new DOMVariable(scope, value, placement);
+
+        domVariable.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.create_and_insert_variable_text$$');
+      });
+
+      it('should include placement and value symbols in packed args', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var inputSymbols = ['PLACEMENT_SYM', 'VALUE_SYM'];
+        mockExecutionContext.get_input_symbol = function(index) {
+          return inputSymbols[index];
+        };
+
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var value = new Constant(scope, 'test');
+        var placement = new VirtualPlacement(scope);
+        var domVariable = new DOMVariable(scope, value, placement);
+
+        domVariable.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.include(setupCode[0], 'VALUE_SYM');
+        assert.include(setupCode[0], 'PLACEMENT_SYM');
+      });
+    });
+  });
+
+  describe('DOMUnescapedVariable', function() {
+    var DOMUnescapedVariable;
+
+    beforeEach(function() {
+      DOMUnescapedVariable = require('../../ir/computables/dom_unescaped_variable');
+      require('../../plugins/compile_client_app/extended_computables/dom_unescaped_variable');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return false for DOM unescaped variable nodes', function() {
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var value = new Constant(scope, '<b>html</b>');
+        var placement = new VirtualPlacement(scope);
+        var domUnescaped = new DOMUnescapedVariable(scope, value, placement);
+
+        var result = domUnescaped.is_needed_for_async_pre_initialize_phase();
+
+        assert.isFalse(result, 'DOM unescaped variable nodes should not appear in async pre-initialize phase');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_INT_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var value = new Constant(scope, '<div>test</div>');
+        var placement = new VirtualPlacement(scope);
+        var domUnescaped = new DOMUnescapedVariable(scope, value, placement);
+
+        var result = domUnescaped.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for unescaped HTML insertion', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function(index) {
+          return 'INPUT_' + index;
+        };
+
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var value = new Constant(scope, '<span>HTML</span>');
+        var placement = new VirtualPlacement(scope);
+        var domUnescaped = new DOMUnescapedVariable(scope, value, placement);
+
+        domUnescaped.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.create_and_insert_unescaped_string$$');
+      });
+    });
+  });
+
+  describe('DOMInlineElement', function() {
+    var DOMInlineElement;
+
+    beforeEach(function() {
+      DOMInlineElement = require('../../ir/computables/dom_inline_element');
+      require('../../plugins/compile_client_app/extended_computables/dom_inline_element');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return false for inline elements', function() {
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var inlineElement = new DOMInlineElement(scope, '<span>test</span>', placement);
+
+        var result = inlineElement.is_needed_for_async_pre_initialize_phase();
+
+        assert.isFalse(result, 'Inline DOM elements should not appear in async pre-initialize phase');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_INT_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var inlineElement = new DOMInlineElement(scope, '<b>test</b>', placement);
+        inlineElement._field_name_references = {};
+
+        var result = inlineElement.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for inline element creation', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function(index) {
+          return 'INPUT_' + index;
+        };
+
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var inlineElement = new DOMInlineElement(scope, '<strong>test</strong>', placement);
+        inlineElement._field_name_references = { after: 'AFTER_SYM' };
+
+        inlineElement.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.sync_compute_no_recompute$$');
       });
     });
   });
