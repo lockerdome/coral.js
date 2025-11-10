@@ -1,6 +1,6 @@
 "use strict";
 
-var htmlEntities = new (require('html-entities').XmlEntities)();
+var htmlEntities = require('html-entities');
 var CodeBuffer = require('../lib/code_buffer');
 var inherits = require('util').inherits;
 module.exports = compile;
