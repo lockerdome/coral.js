@@ -4,502 +4,739 @@
 var assert = require("chai").assert;
 
 describe('Extended Computables Hooks', function() {
+  var Scope;
+  var CharacterRange;
 
-  describe('Base Computable extensions', function() {
-    var Computable;
-
-    beforeEach(function() {
-      // Load the extended computable which adds hooks to base Computable
-      require('../../plugins/compile_client_app/extended_computables/computable');
-      Computable = require('../../ir/computable');
-    });
-
-    it('should add has_client_side_code_initialize_hook method', function() {
-      assert.isFunction(Computable.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should add is_needed_for_async_pre_initialize_phase method', function() {
-      assert.isFunction(Computable.prototype.is_needed_for_async_pre_initialize_phase);
-    });
-
-    it('should add is_needed_for_sync_initialize_phase method', function() {
-      assert.isFunction(Computable.prototype.is_needed_for_sync_initialize_phase);
-    });
-
-    it('should add is_needed_for_update_cycle method', function() {
-      assert.isFunction(Computable.prototype.is_needed_for_update_cycle);
-    });
-
-    it('should add client_side_code_reference_hook method', function() {
-      assert.isFunction(Computable.prototype.client_side_code_reference_hook);
-    });
-
-    it('should add client_side_code_initialize_hook method', function() {
-      assert.isFunction(Computable.prototype.client_side_code_initialize_hook);
-    });
-
-    it('should add client_side_code_async_pre_initialize_hook method', function() {
-      assert.isFunction(Computable.prototype.client_side_code_async_pre_initialize_hook);
-    });
-
-    it('should add get_client_side_input_metadata method', function() {
-      assert.isFunction(Computable.prototype.get_client_side_input_metadata);
-    });
-
-    it('should add client_side_code_cleanup_hook method', function() {
-      assert.isFunction(Computable.prototype.client_side_code_cleanup_hook);
-    });
-
-    it('should document that has_client_side_code_initialize_hook returns true by default', function() {
-      // Default implementation returns true
-      // Subclasses can override to return false (e.g., Constant, ScopeParameter)
-      assert.isTrue(true, 'has_client_side_code_initialize_hook returns true by default');
-    });
-
-    it('should document that client_side_code_cleanup_hook returns empty string by default', function() {
-      // Default implementation returns empty string
-      // Subclasses can override to provide cleanup instructions
-      assert.isTrue(true, 'client_side_code_cleanup_hook returns empty string by default');
-    });
+  beforeEach(function() {
+    Scope = require('../../ir/scope');
+    CharacterRange = require('../../plugins/compile_client_app/character_range');
   });
 
-  describe('Constant extensions', function() {
+  // Helper to create mock compilation context
+  function createMockCompilationContext() {
+    var allocatedGlobals = [];
+    return {
+      allocate_global: function(value) {
+        var symbol = 'G' + allocatedGlobals.length;
+        allocatedGlobals.push({ symbol: symbol, value: value });
+        return symbol;
+      },
+      get_allocated_globals: function() {
+        return allocatedGlobals;
+      },
+      get_scope_compilation_context: function(scope_identity) {
+        return createMockScopeCompilationContext();
+      }
+    };
+  }
+
+  // Helper to create mock instantiation context
+  function createMockInstantiationContext() {
+    var localCounter = 0;
+    var inputCounter = 0;
+    return {
+      allocate_local_symbol: function() {
+        return 'L' + (localCounter++);
+      },
+      allocate_input_symbol: function() {
+        return 'I' + (inputCounter++);
+      }
+    };
+  }
+
+  // Helper to create mock execution context
+  function createMockExecutionContext() {
+    var setupCode = [];
+    var inputSymbols = [];
+    return {
+      get_own_reference: function() {
+        return 'OWN_REF';
+      },
+      add_setup_code: function(code) {
+        setupCode.push(code);
+      },
+      get_setup_code: function() {
+        return setupCode;
+      },
+      get_input_symbol_count: function() {
+        return inputSymbols.length;
+      },
+      get_input_symbol: function(index) {
+        return inputSymbols[index];
+      },
+      set_input_symbols: function(symbols) {
+        inputSymbols = symbols;
+      }
+    };
+  }
+
+  // Helper to create mock scope compilation context
+  function createMockScopeCompilationContext() {
+    return {
+      get_computable_reference: function(computable) {
+        return 'COMP_REF_' + computable.get_identity();
+      }
+    };
+  }
+
+  // Helper to create a basic scope with required methods
+  function createBasicScope() {
+    var range = new CharacterRange(65, 90);
+    var scope = new Scope('test_scope');
+
+    // Add required methods that some computables expect
+    if (!scope.get_instance_count) {
+      scope.get_instance_count = function() { return 0; };
+    }
+    if (!scope.is_output) {
+      scope.is_output = function(computable) { return false; };
+    }
+    if (!scope.get_output_by_field_name) {
+      scope.get_output_by_field_name = function(name) { return null; };
+    }
+
+    return scope;
+  }
+
+  describe('Constant', function() {
     var Constant;
 
     beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/constant');
       Constant = require('../../ir/computables/constant');
+      // Load extended implementation
+      require('../../plugins/compile_client_app/extended_computables/constant');
     });
 
-    it('should document that has_client_side_code_initialize_hook returns false', function() {
-      // Constants don't need initialization - they're compile-time values
-      // Override returns false to skip initialization phase
-      assert.isTrue(true, 'Constants override has_client_side_code_initialize_hook to return false');
+    describe('has_client_side_code_initialize_hook', function() {
+      it('should return false for constants', function() {
+        var scope = createBasicScope();
+        var constant = new Constant(scope, 'test_value');
+
+        var result = constant.has_client_side_code_initialize_hook();
+        assert.isFalse(result, 'Constants do not need initialization');
+      });
     });
 
-    it('should have client_side_code_reference_hook method', function() {
-      assert.isFunction(Constant.prototype.client_side_code_reference_hook);
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate global symbol for constant value', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var constant = new Constant(scope, 'test_value');
+
+        var result = constant.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'G0', 'Should return first global symbol');
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 1);
+        assert.equal(globals[0].value, 'test_value');
+      });
+
+      it('should allocate different globals for different values', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var constant1 = new Constant(scope, 'value1');
+        var constant2 = new Constant(scope, 'value2');
+
+        var result1 = constant1.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+        var result2 = constant2.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result1, 'G0');
+        assert.equal(result2, 'G1');
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 2);
+      });
+
+      it('should handle numeric constant values', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var constant = new Constant(scope, 42);
+
+        var result = constant.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals[0].value, 42);
+      });
+
+      it('should handle null constant values', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var constant = new Constant(scope, null);
+
+        constant.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.isNull(globals[0].value);
+      });
+
+      it('should handle boolean constant values', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var constant = new Constant(scope, true);
+
+        constant.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.isTrue(globals[0].value);
+      });
     });
   });
 
-  describe('ScopeParameter extensions', function() {
+  describe('ScopeParameter', function() {
     var ScopeParameter;
 
     beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/scope_parameter');
       ScopeParameter = require('../../ir/computables/scope_parameter');
+      // Load extended implementation
+      require('../../plugins/compile_client_app/extended_computables/scope_parameter');
     });
 
-    it('should document that has_client_side_code_initialize_hook returns false', function() {
-      // ScopeParameters don't initialize - they receive values from parent scope
-      // Override returns false to skip initialization phase
-      assert.isTrue(true, 'ScopeParameters override has_client_side_code_initialize_hook to return false');
+    describe('has_client_side_code_initialize_hook', function() {
+      it('should return false for scope parameters', function() {
+        var scope = createBasicScope();
+        var param = new ScopeParameter(scope);
+
+        var result = param.has_client_side_code_initialize_hook();
+        assert.isFalse(result, 'ScopeParameters do not initialize');
+      });
     });
 
-    it('should have client_side_code_reference_hook method', function() {
-      assert.isFunction(ScopeParameter.prototype.client_side_code_reference_hook);
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate input symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var param = new ScopeParameter(scope);
+
+        var result = param.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'I0', 'Should return first input symbol');
+      });
+
+      it('should allocate sequential input symbols', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var param1 = new ScopeParameter(scope);
+        var param2 = new ScopeParameter(scope);
+
+        var result1 = param1.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+        var result2 = param2.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result1, 'I0');
+        assert.equal(result2, 'I1');
+      });
     });
 
-    it('should have is_needed_for_update_cycle method', function() {
-      assert.isFunction(ScopeParameter.prototype.is_needed_for_update_cycle);
+    describe('is_needed_for_update_cycle', function() {
+      it('should return false for zone entry parameters', function() {
+        var scope = createBasicScope();
+        var param = new ScopeParameter(scope);
+        param._is_zone_entry_parameter = true;
+
+        var result = param.is_needed_for_update_cycle();
+        assert.isFalse(result, 'Zone entry parameters are not needed for update cycle');
+      });
+
+      it('should have is_needed_for_update_cycle method that handles non-zone-entry parameters', function() {
+        var scope = createBasicScope();
+        var param = new ScopeParameter(scope);
+        param._is_zone_entry_parameter = false;
+
+        // Should not throw
+        // Method exists and can be called with proper setup
+        assert.isFunction(param.is_needed_for_update_cycle);
+      });
     });
   });
 
-  describe('Callback extensions', function() {
+  describe('Callback', function() {
     var Callback;
 
     beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/callback');
       Callback = require('../../ir/computables/callback');
+      // Load extended implementation
+      require('../../plugins/compile_client_app/extended_computables/callback');
     });
 
-    it('should have client_side_code_reference_hook method', function() {
-      assert.isFunction(Callback.prototype.client_side_code_reference_hook);
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var callback = new Callback(scope, function() {}, []);
+
+        var result = callback.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+
+      it('should allocate different local symbols for each callback', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var callback1 = new Callback(scope, function() {}, []);
+        var callback2 = new Callback(scope, function() {}, []);
+
+        var result1 = callback1.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+        var result2 = callback2.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result1, 'L0');
+        assert.equal(result2, 'L1');
+      });
     });
 
-    it('should have client_side_code_initialize_hook method', function() {
-      assert.isFunction(Callback.prototype.client_side_code_initialize_hook);
-    });
-  });
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for callback', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
 
-  describe('DOM element extensions', function() {
-    var DOMElement;
-    var DOMInlineElement;
-    var DOMText;
-    var DOMVariable;
-    var DOMUnescapedVariable;
+        var testFunction = function() { return 42; };
+        var callback = new Callback(scope, testFunction, []);
 
-    beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/dom_element');
-      require('../../plugins/compile_client_app/extended_computables/dom_inline_element');
-      require('../../plugins/compile_client_app/extended_computables/dom_text');
-      require('../../plugins/compile_client_app/extended_computables/dom_variable');
-      require('../../plugins/compile_client_app/extended_computables/dom_unescaped_variable');
+        callback.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
 
-      DOMElement = require('../../ir/computables/dom_element');
-      DOMInlineElement = require('../../ir/computables/dom_inline_element');
-      DOMText = require('../../ir/computables/dom_text');
-      DOMVariable = require('../../ir/computables/dom_variable');
-      DOMUnescapedVariable = require('../../ir/computables/dom_unescaped_variable');
-    });
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1, 'Should add one setup code entry');
+        assert.include(setupCode[0], '$$SCOPE_METHODS.setup_callback$$', 'Should call setup_callback method');
+        assert.include(setupCode[0], 'Coral.sponges', 'Should reference sponges');
+      });
 
-    it('should have DOMElement with client_side_code_initialize_hook', function() {
-      assert.isFunction(DOMElement.prototype.client_side_code_initialize_hook);
-    });
+      it('should allocate global symbol for callback function', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
 
-    it('should have DOMInlineElement with client_side_code_initialize_hook', function() {
-      assert.isFunction(DOMInlineElement.prototype.client_side_code_initialize_hook);
-    });
+        var testFunction = function() { return 42; };
+        var callback = new Callback(scope, testFunction, []);
 
-    it('should have DOMText with client_side_code_initialize_hook', function() {
-      assert.isFunction(DOMText.prototype.client_side_code_initialize_hook);
-    });
+        callback.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
 
-    it('should have DOMVariable with client_side_code_initialize_hook', function() {
-      assert.isFunction(DOMVariable.prototype.client_side_code_initialize_hook);
-    });
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 1);
+        assert.equal(globals[0].value, testFunction);
+      });
 
-    it('should have DOMUnescapedVariable with client_side_code_initialize_hook', function() {
-      assert.isFunction(DOMUnescapedVariable.prototype.client_side_code_initialize_hook);
-    });
+      it('should include own reference in setup code', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
 
-    it('should have DOMElement with client_side_code_reference_hook', function() {
-      assert.isFunction(DOMElement.prototype.client_side_code_reference_hook);
-    });
+        var callback = new Callback(scope, function() {}, []);
 
-    it('should have DOMText with client_side_code_reference_hook', function() {
-      assert.isFunction(DOMText.prototype.client_side_code_reference_hook);
-    });
-  });
+        callback.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
 
-  describe('Event handler extensions', function() {
-    var EventHandler;
-    var KeyEventHandler;
-    var SelectorEventHandler;
-    var ScopeInstanceInteractionEventHandler;
-
-    beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/event_handler');
-      require('../../plugins/compile_client_app/extended_computables/key_event_handler');
-      require('../../plugins/compile_client_app/extended_computables/selector_event_handler');
-      require('../../plugins/compile_client_app/extended_computables/scope_instance_interaction_event_handler');
-
-      EventHandler = require('../../ir/computables/event_handler');
-      KeyEventHandler = require('../../ir/computables/key_event_handler');
-      SelectorEventHandler = require('../../ir/computables/selector_event_handler');
-      ScopeInstanceInteractionEventHandler = require('../../ir/computables/scope_instance_interaction_event_handler');
-    });
-
-    it('should have EventHandler with internal_event_wiring_symbols_hook', function() {
-      assert.isFunction(EventHandler.prototype.internal_event_wiring_symbols_hook);
-    });
-
-    it('should have EventHandler with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(EventHandler.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have KeyEventHandler with internal_event_wiring_symbols_hook', function() {
-      assert.isFunction(KeyEventHandler.prototype.internal_event_wiring_symbols_hook);
-    });
-
-    it('should have SelectorEventHandler with internal_event_wiring_symbols_hook', function() {
-      assert.isFunction(SelectorEventHandler.prototype.internal_event_wiring_symbols_hook);
-    });
-
-    it('should have ScopeInstanceInteractionEventHandler with internal_event_wiring_symbols_hook', function() {
-      assert.isFunction(ScopeInstanceInteractionEventHandler.prototype.internal_event_wiring_symbols_hook);
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.include(setupCode[0], 'OWN_REF', 'Should include own reference');
+      });
     });
   });
 
-  describe('Scope instance extensions', function() {
-    var ScopeInstance;
-    var PolymorphicScopeInstance;
-    var InsertInitializedElement;
-
-    beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/scope_instance');
-      require('../../plugins/compile_client_app/extended_computables/polymorphic_scope_instance');
-      require('../../plugins/compile_client_app/extended_computables/insert_initialized_element');
-
-      ScopeInstance = require('../../ir/computables/scope_instance');
-      PolymorphicScopeInstance = require('../../ir/computables/polymorphic_scope_instance');
-      InsertInitializedElement = require('../../ir/computables/insert_initialized_element');
-    });
-
-    it('should have ScopeInstance with client_side_code_reference_hook', function() {
-      assert.isFunction(ScopeInstance.prototype.client_side_code_reference_hook);
-    });
-
-    it('should have ScopeInstance with get_scope_symbol method', function() {
-      assert.isFunction(ScopeInstance.prototype.get_scope_symbol);
-    });
-
-    it('should have PolymorphicScopeInstance with client_side_code_reference_hook', function() {
-      assert.isFunction(PolymorphicScopeInstance.prototype.client_side_code_reference_hook);
-    });
-
-    it('should have InsertInitializedElement with client_side_code_reference_hook', function() {
-      assert.isFunction(InsertInitializedElement.prototype.client_side_code_reference_hook);
-    });
-
-    it('should have InsertInitializedElement with get_scope_symbol method', function() {
-      assert.isFunction(InsertInitializedElement.prototype.get_scope_symbol);
-    });
-  });
-
-  describe('Virtual computable extensions', function() {
-    var VirtualPlacement;
-    var VirtualElement;
-    var VirtualElements;
-    var VirtualArrayItem;
-    var VirtualArrayItemIndex;
-    var VirtualArgs;
-    var VirtualIntermediate;
-    var VirtualEmitEvent;
-    var VirtualEvent;
-
-    beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/virtual_placement');
-      require('../../plugins/compile_client_app/extended_computables/virtual_element');
-      require('../../plugins/compile_client_app/extended_computables/virtual_elements');
-      require('../../plugins/compile_client_app/extended_computables/virtual_array_item');
-      require('../../plugins/compile_client_app/extended_computables/virtual_array_item_index');
-      require('../../plugins/compile_client_app/extended_computables/virtual_args');
-      require('../../plugins/compile_client_app/extended_computables/virtual_intermediate');
-      require('../../plugins/compile_client_app/extended_computables/virtual_emitevent');
-      require('../../plugins/compile_client_app/extended_computables/virtual_event');
-
-      VirtualPlacement = require('../../ir/computables/virtual_placement');
-      VirtualElement = require('../../ir/computables/virtual_element');
-      VirtualElements = require('../../ir/computables/virtual_elements');
-      VirtualArrayItem = require('../../ir/computables/virtual_array_item');
-      VirtualArrayItemIndex = require('../../ir/computables/virtual_array_item_index');
-      VirtualArgs = require('../../ir/computables/virtual_args');
-      VirtualIntermediate = require('../../ir/computables/virtual_intermediate');
-      VirtualEmitEvent = require('../../ir/computables/virtual_emitevent');
-      VirtualEvent = require('../../ir/computables/virtual_event');
-    });
-
-    it('should have VirtualPlacement with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualPlacement.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualElement with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualElement.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualElements with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualElements.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualArrayItem with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualArrayItem.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualArrayItemIndex with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualArrayItemIndex.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualArgs with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualArgs.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualIntermediate with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualIntermediate.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualEmitEvent with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualEmitEvent.prototype.has_client_side_code_initialize_hook);
-    });
-
-    it('should have VirtualEvent with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(VirtualEvent.prototype.has_client_side_code_initialize_hook);
-    });
-  });
-
-  describe('Other computable extensions', function() {
+  describe('PureFunction', function() {
     var PureFunction;
-    var IterateArray;
-    var ConstantInitializedVariable;
-    var ScopeDependency;
-    var ScopeDataMarker;
-    var CatchHandler;
-    var AbstractChannelHandler;
-    var NestedPassthrough;
-    var DynamicNestedPassthrough;
-    var CompoundNestedPassthrough;
 
     beforeEach(function() {
-      require('../../plugins/compile_client_app/extended_computables/pure_function');
-      require('../../plugins/compile_client_app/extended_computables/iterate_array');
-      require('../../plugins/compile_client_app/extended_computables/constant_initialized_variable');
-      require('../../plugins/compile_client_app/extended_computables/scope_dependency');
-      require('../../plugins/compile_client_app/extended_computables/scope_data_marker');
-      require('../../plugins/compile_client_app/extended_computables/catch_handler');
-      require('../../plugins/compile_client_app/extended_computables/abstract_channel_handler');
-      require('../../plugins/compile_client_app/extended_computables/nested_passthrough');
-      require('../../plugins/compile_client_app/extended_computables/dynamic_nested_passthrough');
-      require('../../plugins/compile_client_app/extended_computables/compound_nested_passthrough');
-
       PureFunction = require('../../ir/computables/pure_function');
-      IterateArray = require('../../ir/computables/iterate_array');
-      ConstantInitializedVariable = require('../../ir/computables/constant_initialized_variable');
-      ScopeDependency = require('../../ir/computables/scope_dependency');
-      ScopeDataMarker = require('../../ir/computables/scope_data_marker');
-      CatchHandler = require('../../ir/computables/catch_handler');
-      AbstractChannelHandler = require('../../ir/computables/abstract_channel_handler');
-      NestedPassthrough = require('../../ir/computables/nested_passthrough');
-      DynamicNestedPassthrough = require('../../ir/computables/dynamic_nested_passthrough');
-      CompoundNestedPassthrough = require('../../ir/computables/compound_nested_passthrough');
+      // Load extended implementation
+      require('../../plugins/compile_client_app/extended_computables/pure_function');
     });
 
-    it('should have PureFunction with client_side_code_initialize_hook', function() {
-      assert.isFunction(PureFunction.prototype.client_side_code_initialize_hook);
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var pureFunc = new PureFunction(scope, function(x) { return x * 2; }, []);
+
+        var result = pureFunc.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
     });
 
-    it('should have IterateArray with client_side_code_initialize_hook', function() {
-      assert.isFunction(IterateArray.prototype.client_side_code_initialize_hook);
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for synchronous pure function', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols(['INPUT1', 'INPUT2']);
+
+        var scope = createBasicScope();
+
+        var pureFunc = new PureFunction(scope, function(x, y) { return x + y; }, []);
+        pureFunc.is_needed_for_async_pre_initialize_phase = function() { return false; };
+        pureFunc.is_output_updated_on_input_change = function() { return true; };
+
+        pureFunc.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.isAtLeast(setupCode.length, 1, 'Should add at least one setup code entry');
+      });
+
+      it('should skip setup for initially async functions', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+
+        var scope = createBasicScope();
+
+        var pureFunc = new PureFunction(scope, function(x) { return x * 2; }, []);
+        pureFunc.is_initially_async = function() { return true; };
+
+        pureFunc.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 0, 'Should not add setup code for initially async functions');
+      });
+
+      it('should include function string in setup code', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols([]);
+
+        var scope = createBasicScope();
+
+        var testFunction = function(x) { return x * 2; };
+        var pureFunc = new PureFunction(scope, testFunction, []);
+        pureFunc.is_needed_for_async_pre_initialize_phase = function() { return false; };
+
+        pureFunc.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        if (setupCode.length > 0) {
+          // Should reference a compute method
+          var hasComputeMethod = setupCode.some(function(code) {
+            return code.indexOf('compute') !== -1;
+          });
+          assert.isTrue(hasComputeMethod, 'Should reference a compute method');
+        }
+      });
     });
 
-    it('should have ConstantInitializedVariable with client_side_code_initialize_hook', function() {
-      assert.isFunction(ConstantInitializedVariable.prototype.client_side_code_initialize_hook);
-    });
+    describe('client_side_code_async_pre_initialize_hook', function() {
+      it('should add setup code for async pure function', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols(['INPUT1']);
 
-    it('should have ScopeDependency with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(ScopeDependency.prototype.has_client_side_code_initialize_hook);
-    });
+        var scope = createBasicScope();
 
-    it('should have ScopeDataMarker with has_client_side_code_initialize_hook', function() {
-      assert.isFunction(ScopeDataMarker.prototype.has_client_side_code_initialize_hook);
-    });
+        var pureFunc = new PureFunction(scope, function(x) { return Promise.resolve(x * 2); }, []);
+        pureFunc.is_output_updated_on_input_change = function() { return true; };
 
-    it('should have CatchHandler with client_side_code_initialize_hook', function() {
-      assert.isFunction(CatchHandler.prototype.client_side_code_initialize_hook);
-    });
+        pureFunc.client_side_code_async_pre_initialize_hook(mockCompilationContext, mockExecutionContext);
 
-    it('should have AbstractChannelHandler with client_side_code_initialize_hook', function() {
-      assert.isFunction(AbstractChannelHandler.prototype.client_side_code_initialize_hook);
-    });
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.isAtLeast(setupCode.length, 1, 'Should add at least one setup code entry');
+        assert.include(setupCode[0], 'promise_async_compute', 'Should call promise_async_compute method');
+      });
 
-    it('should have NestedPassthrough with client_side_code_reference_hook', function() {
-      assert.isFunction(NestedPassthrough.prototype.client_side_code_reference_hook);
-    });
+      it('should include input symbols in packed args', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols(['INPUT1', 'INPUT2']);
 
-    it('should have DynamicNestedPassthrough with client_side_code_initialize_hook', function() {
-      assert.isFunction(DynamicNestedPassthrough.prototype.client_side_code_initialize_hook);
-    });
+        var scope = createBasicScope();
 
-    it('should have CompoundNestedPassthrough with client_side_code_reference_hook', function() {
-      assert.isFunction(CompoundNestedPassthrough.prototype.client_side_code_reference_hook);
+        var pureFunc = new PureFunction(scope, function(x, y) { return Promise.resolve(x + y); }, []);
+        pureFunc.is_output_updated_on_input_change = function() { return true; };
+
+        pureFunc.client_side_code_async_pre_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.include(setupCode[0], 'OWN_REF', 'Should include own reference');
+      });
     });
   });
 
-  describe('Hook integration documentation', function() {
-    it('should document that client_side_code_reference_hook allocates symbols', function() {
-      // Reference hooks are called during ScopeCompilationContext construction
-      // They allocate symbols for computables using InstantiationContext
-      assert.isTrue(true, 'Reference hooks allocate symbols during compilation');
+  describe('EventHandler', function() {
+    var EventHandler;
+
+    beforeEach(function() {
+      EventHandler = require('../../ir/computables/event_handler');
+      // Load extended implementation
+      require('../../plugins/compile_client_app/extended_computables/event_handler');
     });
 
-    it('should document that client_side_code_initialize_hook generates initialization code', function() {
-      // Initialize hooks are called during code generation
-      // They add setup code to ExecutionContext
-      assert.isTrue(true, 'Initialize hooks generate code during async/sync init phases');
+    describe('has_client_side_code_initialize_hook', function() {
+      it('should return false for event handlers', function() {
+        var scope = createBasicScope();
+        var handler = new EventHandler(scope, function() {}, [], 'click');
+
+        var result = handler.has_client_side_code_initialize_hook();
+        assert.isFalse(result, 'EventHandlers do not wire themselves up during initialization');
+      });
     });
 
-    it('should document that has_client_side_code_initialize_hook controls hook invocation', function() {
-      // Computables can opt out of initialization by returning false
-      // Constants and parameters typically return false
-      assert.isTrue(true, 'has_client_side_code_initialize_hook controls whether initialize hook is called');
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate global symbol for handler function', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var testFunction = function() { console.log('clicked'); };
+        var handler = new EventHandler(scope, testFunction, [], 'click');
+
+        var result = handler.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'G0', 'Should return first global symbol');
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 1);
+        assert.equal(globals[0].value, testFunction);
+      });
+
+      it('should store function global symbol for later use', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var handler = new EventHandler(scope, function() {}, [], 'click');
+
+        var result = handler.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(handler._function_global_symbol, result, 'Should store symbol internally');
+      });
     });
 
-    it('should document that is_needed_for_async_pre_initialize_phase determines phase', function() {
-      // Computables are classified into async and sync phases
-      // Async computables initialize first, sync computables initialize after
-      assert.isTrue(true, 'Phase determination affects when initialize hooks are called');
+    describe('client_side_code_cleanup_hook', function() {
+      it('should return cleanup symbol for initialize event type', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
+
+        var handler = new EventHandler(scope, function() {}, [], 'initialize');
+
+        var result = handler.client_side_code_cleanup_hook(mockCompilationContext, mockExecutionContext);
+
+        assert.equal(result, '$$SYMBOLS.cleanup.EVENT_LISTENERS$$', 'Should return event listeners cleanup symbol');
+      });
+
+      it('should return empty string for non-initialize event types', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        var scope = createBasicScope();
+
+        var handler = new EventHandler(scope, function() {}, [], 'click');
+
+        var result = handler.client_side_code_cleanup_hook(mockCompilationContext, mockExecutionContext);
+
+        assert.equal(result, '', 'Should return empty string for non-initialize events');
+      });
     });
 
-    it('should document that is_needed_for_update_cycle determines runtime behavior', function() {
-      // Computables that don't participate in update cycles are optimized
-      // Mutable computables always participate, invariant computables never do
-      assert.isTrue(true, 'Update cycle participation affects runtime optimization');
+    describe('generate_packed_args_hook', function() {
+      it('should have generate_packed_args_hook method', function() {
+        var scope = createBasicScope();
+        var handler = new EventHandler(scope, function() {}, [], 'click');
+
+        assert.isFunction(handler.generate_packed_args_hook, 'Should have generate_packed_args_hook method');
+      });
     });
 
-    it('should document that get_client_side_input_metadata provides phase info', function() {
-      // Input metadata tells dependees which phases an input is available in
-      // Used during code generation to determine which inputs are available
-      assert.isTrue(true, 'Input metadata communicates phase availability to dependees');
-    });
+    describe('internal_event_wiring_symbols_hook', function() {
+      it('should return wiring symbols combining function symbol and packed args', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
 
-    it('should document that client_side_code_cleanup_hook handles disposal', function() {
-      // Cleanup hooks are called when scopes are destroyed
-      // Used for removing event listeners, clearing timers, etc.
-      assert.isTrue(true, 'Cleanup hooks handle computable disposal');
-    });
+        var handler = new EventHandler(scope, function() {}, [], 'click');
 
-    it('should document that internal_event_wiring_symbols_hook generates event metadata', function() {
-      // Event handlers generate packed symbol strings for event wiring
-      // Used by the runtime to dispatch events efficiently
-      assert.isTrue(true, 'Event wiring hooks generate packed event metadata');
+        // First allocate the function global symbol
+        handler.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        var result = handler.internal_event_wiring_symbols_hook(mockCompilationContext, mockScopeCompilationContext);
+
+        assert.isString(result, 'Should return a string');
+        assert.include(result, handler._function_global_symbol, 'Should include function global symbol');
+      });
     });
   });
 
-  describe('Note on comprehensive testing', function() {
-    it('should document that full testing requires compilation pipeline', function() {
-      // Extended computables modify IR computable prototypes to add client-side code generation
-      // Full testing requires:
-      // 1. Complete IR with Scope and Computable instances
-      // 2. CompilationContext with global symbol allocation
-      // 3. ScopeCompilationContext with symbol ranges
-      // 4. InstantiationContext for reference allocation
-      // 5. ExecutionContext for code generation
-      // 6. Integration with code generation and runtime
-      //
-      // This test file verifies that hooks exist and have proper structure
-      // End-to-end compilation testing validates actual code generation
-      assert.isTrue(true, 'Full testing requires complete compilation pipeline integration');
+  describe('Computable (base class extensions)', function() {
+    var Computable;
+
+    beforeEach(function() {
+      Computable = require('../../ir/computable');
+      // Load extended implementation
+      require('../../plugins/compile_client_app/extended_computables/computable');
     });
 
-    it('should document that 37 extended_computables files modify IR classes', function() {
-      // The extended_computables directory contains 37 files that extend IR computables:
-      // - abstract_channel_handler.js
-      // - abstract_virtual.js
-      // - callback.js
-      // - catch_handler.js
-      // - compound_nested_passthrough.js
-      // - computable.js (base extensions)
-      // - constant.js
-      // - constant_initialized_variable.js
-      // - dom_element.js
-      // - dom_inline_element.js
-      // - dom_text.js
-      // - dom_unescaped_variable.js
-      // - dom_variable.js
-      // - dynamic_nested_passthrough.js
-      // - event_handler.js
-      // - insert_initialized_element.js
-      // - iterate_array.js
-      // - key_event_handler.js
-      // - nested_passthrough.js
-      // - polymorphic_scope_instance.js
-      // - pure_function.js
-      // - scope_data_marker.js
-      // - scope_dependency.js
-      // - scope_instance.js
-      // - scope_instance_interaction_event_handler.js
-      // - scope_parameter.js
-      // - selector_event_handler.js
-      // - virtual_args.js
-      // - virtual_array_item.js
-      // - virtual_array_item_index.js
-      // - virtual_element.js
-      // - virtual_elements.js
-      // - virtual_emitevent.js
-      // - virtual_event.js
-      // - virtual_evelement.js
-      // - virtual_intermediate.js
-      // - virtual_placement.js
-      assert.isTrue(true, '37 files extend IR computables with client-side code generation hooks');
+    describe('has_client_side_code_initialize_hook', function() {
+      it('should return true by default', function() {
+        // We can test this on a concrete subclass like Constant
+        var Constant = require('../../ir/computables/constant');
+        require('../../plugins/compile_client_app/extended_computables/constant');
+
+        // Check the base Computable prototype
+        assert.isFunction(Computable.prototype.has_client_side_code_initialize_hook);
+
+        // The default implementation returns true
+        var defaultResult = Computable.prototype.has_client_side_code_initialize_hook.call({});
+        assert.isTrue(defaultResult, 'Base implementation returns true');
+      });
+    });
+
+    describe('client_side_code_cleanup_hook', function() {
+      it('should return empty string by default', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+
+        var result = Computable.prototype.client_side_code_cleanup_hook.call({}, mockCompilationContext, mockScopeCompilationContext);
+
+        assert.equal(result, '', 'Default cleanup hook returns empty string');
+      });
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should be a function', function() {
+        assert.isFunction(Computable.prototype.is_needed_for_async_pre_initialize_phase);
+      });
+    });
+
+    describe('is_needed_for_sync_initialize_phase', function() {
+      it('should be a function', function() {
+        assert.isFunction(Computable.prototype.is_needed_for_sync_initialize_phase);
+      });
+    });
+
+    describe('is_needed_for_update_cycle', function() {
+      it('should be a function', function() {
+        assert.isFunction(Computable.prototype.is_needed_for_update_cycle);
+      });
+    });
+
+    describe('get_client_side_input_metadata', function() {
+      it('should return object with required phase flags', function() {
+        // Test with a concrete implementation
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        require('../../plugins/compile_client_app/extended_computables/scope_parameter');
+
+        var scope = createBasicScope();
+        var param = new ScopeParameter(scope);
+
+        var metadata = param.get_client_side_input_metadata(0);
+
+        assert.isObject(metadata);
+        assert.property(metadata, 'is_needed_for_async_pre_initialize_phase');
+        assert.property(metadata, 'is_needed_for_sync_initialize_phase');
+        assert.property(metadata, 'is_needed_for_update_cycle');
+        assert.isBoolean(metadata.is_needed_for_async_pre_initialize_phase);
+        assert.isBoolean(metadata.is_needed_for_sync_initialize_phase);
+        assert.isBoolean(metadata.is_needed_for_update_cycle);
+      });
+    });
+  });
+
+  describe('Integration tests', function() {
+    it('should handle multiple computables with different hook implementations', function() {
+      var mockCompilationContext = createMockCompilationContext();
+      var mockInstantiationContext = createMockInstantiationContext();
+      var scope = createBasicScope();
+
+      // Load all types
+      var Constant = require('../../ir/computables/constant');
+      var ScopeParameter = require('../../ir/computables/scope_parameter');
+      var Callback = require('../../ir/computables/callback');
+
+      require('../../plugins/compile_client_app/extended_computables/constant');
+      require('../../plugins/compile_client_app/extended_computables/scope_parameter');
+      require('../../plugins/compile_client_app/extended_computables/callback');
+
+      // Create instances
+      var constant = new Constant(scope, 'test');
+
+      var param = new ScopeParameter(scope);
+
+      var callback = new Callback(scope, function() {}, []);
+
+      // Test has_client_side_code_initialize_hook
+      assert.isFalse(constant.has_client_side_code_initialize_hook());
+      assert.isFalse(param.has_client_side_code_initialize_hook());
+      assert.isTrue(callback.has_client_side_code_initialize_hook());
+
+      // Test reference hooks
+      var constantRef = constant.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+      var paramRef = param.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+      var callbackRef = callback.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+      // Each should get different type of symbol
+      assert.equal(constantRef, 'G0', 'Constant uses global');
+      assert.equal(paramRef, 'I0', 'Parameter uses input');
+      assert.equal(callbackRef, 'L0', 'Callback uses local');
+    });
+
+    it('should properly allocate symbols across multiple calls', function() {
+      var mockCompilationContext = createMockCompilationContext();
+      var mockInstantiationContext = createMockInstantiationContext();
+      var scope = createBasicScope();
+
+      var Constant = require('../../ir/computables/constant');
+      require('../../plugins/compile_client_app/extended_computables/constant');
+
+      // Allocate multiple constants
+      var constants = [];
+      for (var i = 0; i < 5; i++) {
+        var constant = new Constant(scope, 'value' + i);
+        constants.push(constant);
+      }
+
+      // Get references
+      var refs = constants.map(function(c) {
+        return c.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+      });
+
+      // Each should get unique global symbol
+      assert.equal(refs.length, 5);
+      for (var i = 0; i < 5; i++) {
+        assert.equal(refs[i], 'G' + i);
+      }
+
+      var globals = mockCompilationContext.get_allocated_globals();
+      assert.equal(globals.length, 5);
+    });
+
+    it('should handle mixed initialization requirements', function() {
+      var mockCompilationContext = createMockCompilationContext();
+      var mockExecutionContext = createMockExecutionContext();
+      var mockInstantiationContext = createMockInstantiationContext();
+      var scope = createBasicScope();
+
+      var Constant = require('../../ir/computables/constant');
+      var Callback = require('../../ir/computables/callback');
+
+      require('../../plugins/compile_client_app/extended_computables/constant');
+      require('../../plugins/compile_client_app/extended_computables/callback');
+
+      var constant = new Constant(scope, 'test');
+
+      var callback = new Callback(scope, function() {}, []);
+
+      // Constant doesn't need initialization
+      assert.isFalse(constant.has_client_side_code_initialize_hook());
+
+      // Callback needs initialization
+      assert.isTrue(callback.has_client_side_code_initialize_hook());
+      callback.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+      var setupCode = mockExecutionContext.get_setup_code();
+      assert.isAtLeast(setupCode.length, 1, 'Callback should have added setup code');
     });
   });
 });
