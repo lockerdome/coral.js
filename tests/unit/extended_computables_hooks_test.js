@@ -860,6 +860,396 @@ describe('Extended Computables Hooks', function() {
       it('should properly initialize with reference hook before calling other hooks', function() {
         var mockCompilationContext = createMockCompilationContext();
         var mockInstantiationContext = createMockInstantiationContext();
+
+  describe('DOMElement', function() {
+    var DOMElement;
+
+    beforeEach(function() {
+      DOMElement = require('../../ir/computables/dom_element');
+      require('../../plugins/compile_client_app/extended_computables/dom_element');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return false for DOM elements', function() {
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domElement = new DOMElement(scope, 'div', {}, placement);
+
+        var result = domElement.is_needed_for_async_pre_initialize_phase();
+
+        assert.isFalse(result, 'DOM elements should not appear in async pre-initialize phase');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate sync internal symbols for after and inner', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_INT_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domElement = new DOMElement(scope, 'div', {}, placement);
+        domElement._field_name_references = {};
+
+        var result = domElement.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'SYNC_INT_0_after', 'Should return after symbol');
+        assert.equal(domElement._field_name_references.after, 'SYNC_INT_0_after');
+        assert.equal(domElement._field_name_references.inner, 'SYNC_INT_1_inner');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for element without attributes', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function(index) {
+          return 'INPUT_' + index;
+        };
+
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domElement = new DOMElement(scope, 'div', {}, placement);
+        domElement._field_name_references = { after: 'AFTER_SYM', inner: 'INNER_SYM' };
+        domElement._node_type = 'div';
+        domElement._attributes = {};
+
+        domElement.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.create_and_insert_element$$');
+      });
+
+      it('should allocate global for node type', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function() { return 'INPUT'; };
+
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domElement = new DOMElement(scope, 'span', {}, placement);
+        domElement._field_name_references = { after: 'A', inner: 'I' };
+        domElement._node_type = 'span';
+        domElement._attributes = {};
+
+        domElement.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var globals = mockCompilationContext.get_allocated_globals();
+        assert.equal(globals.length, 1);
+        assert.equal(globals[0].value, 'span');
+      });
+
+      it('should add setup code for element with attributes', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.get_input_symbol = function(index) {
+          return 'INPUT_' + index;
+        };
+
+        var scope = createBasicScope();
+        var VirtualPlacement = require('../../ir/computables/virtual_placement');
+        var placement = new VirtualPlacement(scope);
+        var domElement = new DOMElement(scope, 'div', { class: [] }, placement);
+        domElement._field_name_references = { after: 'AFTER', inner: 'INNER' };
+        domElement._node_type = 'div';
+        domElement._attributes = { class: [] };
+
+        domElement.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.create_and_insert_element_with_attributes$$');
+      });
+    });
+  });
+
+  describe('ScopeInstance', function() {
+    var ScopeInstance;
+
+    beforeEach(function() {
+      ScopeInstance = require('../../ir/computables/scope_instance');
+      require('../../plugins/compile_client_app/extended_computables/scope_instance');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return true for scope instances', function() {
+        var scope = createBasicScope();
+        var targetScope = new Scope('target_scope');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+
+        var result = scopeInstance.is_needed_for_async_pre_initialize_phase();
+
+        assert.isTrue(result, 'Scope instances need async pre-initialize phase');
+      });
+    });
+
+    describe('is_needed_for_sync_initialize_phase', function() {
+      it('should return true for scope instances', function() {
+        var scope = createBasicScope();
+        var targetScope = new Scope('target_scope');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+
+        var result = scopeInstance.is_needed_for_sync_initialize_phase();
+
+        assert.isTrue(result, 'Scope instances need sync initialize phase');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate async internal symbol for scope', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var asyncInternalCounter = 0;
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_async_internal_symbol = function(name) {
+          return 'ASYNC_' + (asyncInternalCounter++) + '_' + name;
+        };
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        // Mock scope compilation context
+        mockCompilationContext.get_scope_compilation_context = function() {
+          return {
+            get_async_output_count: function() { return 0; },
+            get_sync_output_count: function() { return 1; },
+            get_sync_output_field_name: function(i) { return 'after'; }
+          };
+        };
+
+        var targetScope = new Scope('target_scope');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+        scopeInstance._async_field_names = [];
+        scopeInstance._sync_field_names = [];
+        scopeInstance._field_name_references = {};
+
+        var result = scopeInstance.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'ASYNC_0_scope', 'Should return scope symbol');
+        assert.equal(scopeInstance._scope_symbol, 'ASYNC_0_scope');
+      });
+
+      it('should allocate sync internal symbols for sync outputs', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var syncInternalCounter = 0;
+        mockInstantiationContext.allocate_async_internal_symbol = function() {
+          return 'ASYNC_SCOPE';
+        };
+        mockInstantiationContext.allocate_sync_internal_symbol = function(name) {
+          return 'SYNC_' + (syncInternalCounter++) + '_' + name;
+        };
+
+        mockCompilationContext.get_scope_compilation_context = function() {
+          return {
+            get_async_output_count: function() { return 0; },
+            get_sync_output_count: function() { return 2; },
+            get_sync_output_field_name: function(i) {
+              return i === 0 ? 'after' : 'result';
+            }
+          };
+        };
+
+        var targetScope = new Scope('target_scope');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+        scopeInstance._async_field_names = [];
+        scopeInstance._sync_field_names = [];
+        scopeInstance._field_name_references = {};
+
+        scopeInstance.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(scopeInstance._field_name_references.after, 'SYNC_0_sync-0');
+        assert.equal(scopeInstance._field_name_references.result, 'SYNC_1_sync-1');
+        assert.deepEqual(scopeInstance._sync_field_names, ['after', 'result']);
+      });
+    });
+
+    describe('get_client_side_input_metadata', function() {
+      it('should delegate to scope parameter metadata', function() {
+        var scope = createBasicScope();
+        var targetScope = new Scope('target_scope');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param1 = new ScopeParameter(targetScope);
+        var param2 = new ScopeParameter(targetScope);
+
+        var Constant = require('../../ir/computables/constant');
+        var input1 = new Constant(scope, null);
+        var input2 = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input1, input2]);
+
+        var metadata = scopeInstance.get_client_side_input_metadata(0);
+
+        assert.isObject(metadata);
+        assert.property(metadata, 'is_needed_for_async_pre_initialize_phase');
+        assert.property(metadata, 'is_needed_for_sync_initialize_phase');
+        assert.property(metadata, 'is_needed_for_update_cycle');
+      });
+    });
+
+    describe('client_side_code_cleanup_hook', function() {
+      it('should return scope symbol when cleanup needed', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        mockCompilationContext.get_scope_compilation_context = function() {
+          return {
+            get_cleanup_instructions: function() {
+              return ['CLEANUP_CODE'];
+            }
+          };
+        };
+
+        var targetScope = new Scope('target_scope');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+        scopeInstance._scope_symbol = 'SCOPE_SYM';
+        scopeInstance.get_scope_symbol = function() { return 'SCOPE_SYM'; };
+
+        var result = scopeInstance.client_side_code_cleanup_hook(mockCompilationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'SCOPE_SYM', 'Should return scope symbol when cleanup needed');
+      });
+
+      it('should return empty string when no cleanup needed', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        mockCompilationContext.get_scope_compilation_context = function() {
+          return {
+            get_cleanup_instructions: function() {
+              return [];
+            }
+          };
+        };
+
+        var targetScope = new Scope('target_scope');
+        var ScopeParameter = require('../../ir/computables/scope_parameter');
+        var param = new ScopeParameter(targetScope);
+        var Constant = require('../../ir/computables/constant');
+        var input = new Constant(scope, null);
+        var scopeInstance = new ScopeInstance(scope, targetScope, [input]);
+
+        var result = scopeInstance.client_side_code_cleanup_hook(mockCompilationContext, mockScopeCompilationContext);
+
+        assert.equal(result, '', 'Should return empty string when no cleanup needed');
+      });
+    });
+  });
+
+  describe('PolymorphicScopeInstance', function() {
+    var PolymorphicScopeInstance;
+    var IRExactValueType;
+
+    beforeEach(function() {
+      PolymorphicScopeInstance = require('../../ir/computables/polymorphic_scope_instance');
+      IRExactValueType = require('../../ir/types/exact_value');
+      require('../../plugins/compile_client_app/extended_computables/polymorphic_scope_instance');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return true for polymorphic scope instances', function() {
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var conditionComputable = new Constant(scope, 'choice1');
+        
+        var polymorphicScope = new PolymorphicScopeInstance(scope, conditionComputable);
+
+        var result = polymorphicScope.is_needed_for_async_pre_initialize_phase();
+
+        assert.isTrue(result, 'Polymorphic scope instances need async pre-initialize phase');
+      });
+    });
+
+    describe('is_needed_for_sync_initialize_phase', function() {
+      it('should return true for polymorphic scope instances', function() {
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var conditionComputable = new Constant(scope, 'choice1');
+        
+        var polymorphicScope = new PolymorphicScopeInstance(scope, conditionComputable);
+
+        var result = polymorphicScope.is_needed_for_sync_initialize_phase();
+
+        assert.isTrue(result, 'Polymorphic scope instances need sync initialize phase');
+      });
+    });
+
+    describe('get_client_side_input_metadata', function() {
+      it('should return metadata with async needed for index 0 (condition)', function() {
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var conditionComputable = new Constant(scope, 'choice1');
+        
+        var polymorphicScope = new PolymorphicScopeInstance(scope, conditionComputable);
+
+        var metadata = polymorphicScope.get_client_side_input_metadata(0);
+
+        assert.isTrue(metadata.is_needed_for_async_pre_initialize_phase, 'Condition needed in async phase');
+        assert.isFalse(metadata.is_needed_for_sync_initialize_phase, 'Condition not needed in sync phase');
+        assert.isBoolean(metadata.is_needed_for_update_cycle);
+      });
+    });
+
+    describe('client_side_code_cleanup_hook', function() {
+      it('should return empty string when no choice scopes have cleanup', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockScopeCompilationContext = createMockScopeCompilationContext();
+        var scope = createBasicScope();
+
+        mockCompilationContext.get_scope_compilation_context = function() {
+          return {
+            get_cleanup_instructions: function() {
+              return [];
+            }
+          };
+        };
+
+        var Constant = require('../../ir/computables/constant');
+        var conditionComputable = new Constant(scope, 'choice1');
+        var polymorphicScope = new PolymorphicScopeInstance(scope, conditionComputable);
+        polymorphicScope._choice_scopes = [];
+
+        var result = polymorphicScope.client_side_code_cleanup_hook(mockCompilationContext, mockScopeCompilationContext);
+
+        assert.equal(result, '', 'Should return empty string when no cleanup needed');
+      });
+    });
+  });
         var scope = createBasicScope();
 
         mockInstantiationContext.allocate_async_internal_symbol = function(name) {
