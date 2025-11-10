@@ -1949,6 +1949,403 @@ describe('Extended Computables Hooks', function() {
       });
     });
   });
+
+  describe('ScopeDataMarker', function() {
+    var ScopeDataMarker;
+
+    beforeEach(function() {
+      ScopeDataMarker = require('../../ir/computables/scope_data_marker');
+      require('../../plugins/compile_client_app/extended_computables/scope_data_marker');
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should return undefined (no symbol allocation)', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var dataComputable = new Constant(scope, { key: 'value' });
+
+        var marker = new ScopeDataMarker(scope, dataComputable);
+
+        var result = marker.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.isUndefined(result, 'ScopeDataMarker does not allocate a reference symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for marking scope data', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols(['INPUT0']);
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var dataComputable = new Constant(scope, { key: 'value' });
+
+        var marker = new ScopeDataMarker(scope, dataComputable);
+
+        marker.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.mark_scope_data$$');
+        assert.include(setupCode[0], 'INPUT0');
+      });
+    });
+  });
+
+  describe('ScopeDependency', function() {
+    var ScopeDependency;
+
+    beforeEach(function() {
+      ScopeDependency = require('../../ir/computables/scope_dependency');
+      require('../../plugins/compile_client_app/extended_computables/scope_dependency');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return true for scope dependencies', function() {
+        var scope = createBasicScope();
+        var dependency = new ScopeDependency(scope, 'css', 'https://example.com/style.css');
+
+        var result = dependency.is_needed_for_async_pre_initialize_phase();
+
+        assert.isTrue(result, 'Scope dependencies need async pre-initialization');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+
+        var dependency = new ScopeDependency(scope, 'js', 'https://example.com/script.js');
+
+        var result = dependency.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_async_pre_initialize_hook', function() {
+      it('should add setup code for CSS dependency loading', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols(['INPUT0', 'INPUT1']);
+        var scope = createBasicScope();
+
+        var dependency = new ScopeDependency(scope, 'css', 'https://example.com/style.css');
+
+        dependency.client_side_code_async_pre_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.load_dependency_when_ready$$');
+        assert.include(setupCode[0], 'OWN_REF');
+        assert.include(setupCode[0], '0'); // CSS type = 0
+      });
+
+      it('should add setup code for JS dependency loading', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols([]);
+        var scope = createBasicScope();
+
+        var dependency = new ScopeDependency(scope, 'js', 'https://example.com/script.js');
+
+        dependency.client_side_code_async_pre_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.load_dependency_when_ready$$');
+        assert.include(setupCode[0], '1'); // JS type = 1
+      });
+    });
+  });
+
+  describe('InsertInitializedElement', function() {
+    var InsertInitializedElement;
+
+    beforeEach(function() {
+      InsertInitializedElement = require('../../ir/computables/insert_initialized_element');
+      require('../../plugins/compile_client_app/extended_computables/insert_initialized_element');
+    });
+
+    describe('is_needed_for_sync_initialize_phase', function() {
+      it('should return true', function() {
+        var scope = createBasicScope();
+        var Constant = require("../../ir/computables/constant");
+        var element = new Constant(scope, null);
+        var VirtualPlacement = require("../../ir/computables/virtual_placement");
+        var placement = new VirtualPlacement(scope);
+        var insert = new InsertInitializedElement(scope, element, placement);
+
+        var result = insert.is_needed_for_sync_initialize_phase();
+
+        assert.isTrue(result, 'InsertInitializedElement needs sync initialization');
+      });
+    });
+
+    describe('client_side_code_reference_hook', function() {
+      it('should allocate local symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var scope = createBasicScope();
+        var Constant = require("../../ir/computables/constant");
+        var element = new Constant(scope, null);
+        var VirtualPlacement = require("../../ir/computables/virtual_placement");
+        var placement = new VirtualPlacement(scope);
+        var insert = new InsertInitializedElement(scope, element, placement);
+
+        var result = insert.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext);
+
+        assert.equal(result, 'L0', 'Should return first local symbol');
+      });
+    });
+
+    describe('client_side_code_initialize_hook', function() {
+      it('should add setup code for initializing element', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockExecutionContext = createMockExecutionContext();
+        mockExecutionContext.set_input_symbols(['ELEMENT_SYM', 'PLACEMENT_SYM']);
+        var scope = createBasicScope();
+        var Constant = require("../../ir/computables/constant");
+        var element = new Constant(scope, null);
+        var VirtualPlacement = require("../../ir/computables/virtual_placement");
+        var placement = new VirtualPlacement(scope);
+        var insert = new InsertInitializedElement(scope, element, placement);
+
+        insert.client_side_code_initialize_hook(mockCompilationContext, mockExecutionContext);
+
+        var setupCode = mockExecutionContext.get_setup_code();
+        assert.equal(setupCode.length, 1);
+        assert.include(setupCode[0], '$$SCOPE_METHODS.initialize_element_as_arg$$');
+        assert.include(setupCode[0], 'OWN_REF');
+        assert.include(setupCode[0], 'ELEMENT_SYM');
+        assert.include(setupCode[0], 'PLACEMENT_SYM');
+      });
+    });
+
+    describe('get_client_side_input_metadata', function() {
+      it('should return metadata for element input (index 0)', function() {
+        var scope = createBasicScope();
+        var Constant = require("../../ir/computables/constant");
+        var element = new Constant(scope, null);
+        var VirtualPlacement = require("../../ir/computables/virtual_placement");
+        var placement = new VirtualPlacement(scope);
+        var insert = new InsertInitializedElement(scope, element, placement);
+
+        var metadata = insert.get_client_side_input_metadata(0);
+
+        assert.isFalse(metadata.is_needed_for_async_pre_initialize_phase);
+        assert.isTrue(metadata.is_needed_for_sync_initialize_phase);
+        assert.isTrue(metadata.is_needed_for_update_cycle, 'Element input needed for updates');
+      });
+
+      it('should return metadata for placement input (index 1)', function() {
+        var scope = createBasicScope();
+        var Constant = require("../../ir/computables/constant");
+        var element = new Constant(scope, null);
+        var VirtualPlacement = require("../../ir/computables/virtual_placement");
+        var placement = new VirtualPlacement(scope);
+        var insert = new InsertInitializedElement(scope, element, placement);
+
+        var metadata = insert.get_client_side_input_metadata(1);
+
+        assert.isFalse(metadata.is_needed_for_async_pre_initialize_phase);
+        assert.isTrue(metadata.is_needed_for_sync_initialize_phase);
+        assert.isFalse(metadata.is_needed_for_update_cycle, 'Placement input not needed for updates');
+      });
+    });
+  });
+
+  describe('CatchHandler', function() {
+    var CatchHandler;
+
+    beforeEach(function() {
+      CatchHandler = require('../../ir/computables/catch_handler');
+      require('../../plugins/compile_client_app/extended_computables/catch_handler');
+    });
+
+    describe('is_needed_for_async_pre_initialize_phase', function() {
+      it('should return true', function() {
+        var scope = createBasicScope();
+        var catchHandler = new CatchHandler(scope, []);
+
+        var result = catchHandler.is_needed_for_async_pre_initialize_phase();
+
+        assert.isTrue(result, 'CatchHandler needs async pre-initialization');
+      });
+    });
+
+    describe('get_client_side_input_metadata', function() {
+      it('should return metadata with inputs only needed for sync phase', function() {
+        var scope = createBasicScope();
+        var catchHandler = new CatchHandler(scope, []);
+
+        var metadata = catchHandler.get_client_side_input_metadata(0);
+
+        assert.isFalse(metadata.is_needed_for_async_pre_initialize_phase, 'Inputs not needed for async phase');
+        assert.isTrue(metadata.is_needed_for_sync_initialize_phase);
+        assert.isFalse(metadata.is_needed_for_update_cycle);
+      });
+    });
+  });
+
+  describe('Virtual Computables', function() {
+    var VirtualArgs, VirtualArrayItem, VirtualArrayItemIndex, VirtualPlacement, VirtualIntermediate;
+
+    beforeEach(function() {
+      VirtualArgs = require('../../ir/computables/virtual_args');
+      VirtualArrayItem = require('../../ir/computables/virtual_array_item');
+      VirtualArrayItemIndex = require('../../ir/computables/virtual_array_item_index');
+      VirtualPlacement = require('../../ir/computables/virtual_placement');
+      VirtualIntermediate = require('../../ir/computables/virtual_intermediate');
+
+      require('../../plugins/compile_client_app/extended_computables/virtual_args');
+      require('../../plugins/compile_client_app/extended_computables/virtual_array_item');
+      require('../../plugins/compile_client_app/extended_computables/virtual_array_item_index');
+      require('../../plugins/compile_client_app/extended_computables/virtual_placement');
+      require('../../plugins/compile_client_app/extended_computables/virtual_intermediate');
+    });
+
+    describe('VirtualArgs', function() {
+      it('should return special ARGS_VIRTUAL symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = {
+          get_symbols: function() {
+            return { special: { ARGS_VIRTUAL: 'SPECIAL_ARGS' } };
+          }
+        };
+        var scope = createBasicScope();
+
+        var virtualArgs = new VirtualArgs(scope);
+
+        var result = virtualArgs.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'SPECIAL_ARGS', 'Should return ARGS_VIRTUAL special symbol');
+      });
+    });
+
+    describe('VirtualArrayItem', function() {
+      it('should return special ITEM_VIRTUAL symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = {
+          get_symbols: function() {
+            return { special: { ITEM_VIRTUAL: 'SPECIAL_ITEM' } };
+          }
+        };
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var arrayComputable = new Constant(scope, []);
+
+        var virtualItem = new VirtualArrayItem(scope, arrayComputable);
+
+        var result = virtualItem.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'SPECIAL_ITEM', 'Should return ITEM_VIRTUAL special symbol');
+      });
+
+      it('should return false for has_client_side_code_initialize_hook', function() {
+        var scope = createBasicScope();
+        var Constant = require('../../ir/computables/constant');
+        var arrayComputable = new Constant(scope, []);
+
+        var virtualItem = new VirtualArrayItem(scope, arrayComputable);
+
+        var result = virtualItem.has_client_side_code_initialize_hook();
+
+        assert.isFalse(result, 'Virtual array item has no initialize hook');
+      });
+    });
+
+    describe('VirtualArrayItemIndex', function() {
+      it('should return special ITEM_INDEX_VIRTUAL symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = {
+          get_symbols: function() {
+            return { special: { ITEM_INDEX_VIRTUAL: 'SPECIAL_INDEX' } };
+          }
+        };
+        var scope = createBasicScope();
+        var Constant = require("../../ir/computables/constant");
+        var arrayComputable = new Constant(scope, []);
+
+        var virtualIndex = new VirtualArrayItemIndex(scope, arrayComputable);
+
+        var result = virtualIndex.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'SPECIAL_INDEX', 'Should return ITEM_INDEX_VIRTUAL special symbol');
+      });
+
+      it('should return false for has_client_side_code_initialize_hook', function() {
+        var scope = createBasicScope();
+        var Constant = require("../../ir/computables/constant");
+        var arrayComputable = new Constant(scope, []);
+
+        var virtualIndex = new VirtualArrayItemIndex(scope, arrayComputable);
+
+        var result = virtualIndex.has_client_side_code_initialize_hook();
+
+        assert.isFalse(result, 'Virtual array item index has no initialize hook');
+      });
+    });
+
+    describe('VirtualPlacement', function() {
+      it('should return special PLACEMENT_VIRTUAL symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = {
+          get_symbols: function() {
+            return { special: { PLACEMENT_VIRTUAL: 'SPECIAL_PLACEMENT' } };
+          }
+        };
+        var scope = createBasicScope();
+
+        var virtualPlacement = new VirtualPlacement(scope);
+
+        var result = virtualPlacement.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'SPECIAL_PLACEMENT', 'Should return PLACEMENT_VIRTUAL special symbol');
+      });
+    });
+
+    describe('VirtualIntermediate', function() {
+      it('should return special PREVIOUS_INTERMEDIATE symbol', function() {
+        var mockCompilationContext = createMockCompilationContext();
+        var mockInstantiationContext = createMockInstantiationContext();
+        var mockScopeCompilationContext = {
+          get_symbols: function() {
+            return { special: { PREVIOUS_INTERMEDIATE: 'SPECIAL_INTERMEDIATE' } };
+          }
+        };
+        var scope = createBasicScope();
+        var IRAnyType = require('../../ir/types/any');
+
+        var virtualIntermediate = new VirtualIntermediate(scope, new IRAnyType());
+
+        var result = virtualIntermediate.client_side_code_reference_hook(mockCompilationContext, mockInstantiationContext, mockScopeCompilationContext);
+
+        assert.equal(result, 'SPECIAL_INTERMEDIATE', 'Should return PREVIOUS_INTERMEDIATE special symbol');
+      });
+
+      it('should return false for has_client_side_code_initialize_hook', function() {
+        var scope = createBasicScope();
+        var IRAnyType = require('../../ir/types/any');
+
+        var virtualIntermediate = new VirtualIntermediate(scope, new IRAnyType());
+
+        var result = virtualIntermediate.has_client_side_code_initialize_hook();
+
+        assert.isFalse(result, 'Virtual intermediate has no initialize hook');
+      });
+    });
+  });
+
   describe('Integration tests', function() {
     it('should handle multiple computables with different hook implementations', function() {
       var mockCompilationContext = createMockCompilationContext();
