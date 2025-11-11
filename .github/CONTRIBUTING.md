@@ -121,7 +121,6 @@ All pull requests go through automated checks:
 - **Security Audit** - Checks for vulnerable dependencies
 - **Code Coverage** - Generates coverage reports
 - **PR Analysis** - Provides insights about your changes
-- **CodeQL** - Security and quality analysis
 
 ## Code Style Guidelines
 

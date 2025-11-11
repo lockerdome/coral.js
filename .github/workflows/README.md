@@ -57,21 +57,23 @@ Monitors and reports on project dependencies.
 
 ---
 
-### 🔒 CodeQL Security Analysis (codeql-analysis.yml)
+### ⏰ Scheduled Tests (scheduled-tests.yml)
 **Triggers:**
-- Push to main/master/develop branches
-- Pull requests
-- Weekly schedule (Wednesdays at 3 AM UTC)
+- Daily schedule (2 AM UTC)
+- Manual trigger via workflow_dispatch
 
-Performs advanced security analysis using GitHub's CodeQL engine.
+Runs comprehensive tests on a schedule to catch time-dependent issues and test cross-platform compatibility.
 
 **Jobs:**
-- **Analyze** - Scans JavaScript code for security vulnerabilities and code quality issues
+- **Daily Test Run** - Runs full test suite daily
+- **Cross-Platform Tests** - Tests on Ubuntu, Windows, and macOS
+- **Dependency Freshness** - Tests with latest compatible dependency versions
 
 **Features:**
-- Security vulnerability detection
-- Code quality analysis
-- Results visible in Security tab
+- Detects flaky tests
+- Identifies time-dependent failures
+- Validates cross-platform compatibility
+- Tests dependency update compatibility
 
 ---
 
@@ -82,7 +84,6 @@ Add these badges to your README.md:
 ```markdown
 ![CI](https://github.com/YOUR_USERNAME/coral.js/workflows/CI/badge.svg)
 ![Pull Request Checks](https://github.com/YOUR_USERNAME/coral.js/workflows/Pull%20Request%20Checks/badge.svg)
-![CodeQL](https://github.com/YOUR_USERNAME/coral.js/workflows/CodeQL%20Security%20Analysis/badge.svg)
 ```
 
 ---
