@@ -1,0 +1,124 @@
+name: Scheduled Tests
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  scheduled-test:
+    name: Daily Test Run
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run full test suite
+      run: npm test
+
+    - name: Generate test report
+      if: always()
+      run: |
+        echo "## Scheduled Test Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Date:** $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "**Node Version:** $(node --version)" >> $GITHUB_STEP_SUMMARY
+        echo "**NPM Version:** $(npm --version)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        npm test 2>&1 | grep "passing" >> $GITHUB_STEP_SUMMARY || echo "Tests failed" >> $GITHUB_STEP_SUMMARY
+
+    - name: Check for flaky tests
+      if: failure()
+      run: |
+        echo "## ⚠️ Test Failure Detected" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The scheduled test run failed. This may indicate:" >> $GITHUB_STEP_SUMMARY
+        echo "- Flaky tests" >> $GITHUB_STEP_SUMMARY
+        echo "- Time-dependent test failures" >> $GITHUB_STEP_SUMMARY
+        echo "- External dependency issues" >> $GITHUB_STEP_SUMMARY
+        echo "- Breaking changes in dependencies" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Please investigate the test failures above." >> $GITHUB_STEP_SUMMARY
+
+  cross-platform-test:
+    name: Cross-Platform Tests
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [20.x]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run tests on ${{ matrix.os }}
+      run: npm test
+
+    - name: Platform-specific checks
+      shell: bash
+      run: |
+        echo "## Test Results on ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        npm test 2>&1 | grep "passing" >> $GITHUB_STEP_SUMMARY || echo "Tests failed" >> $GITHUB_STEP_SUMMARY
+
+  dependency-freshness:
+    name: Test with Latest Dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+
+    - name: Install dependencies (exact versions)
+      run: npm ci
+
+    - name: Run tests with current dependencies
+      run: npm test
+
+    - name: Update to latest compatible versions
+      run: npm update
+      continue-on-error: true
+
+    - name: Run tests with updated dependencies
+      run: npm test
+      continue-on-error: true
+
+    - name: Report dependency compatibility
+      if: always()
+      run: |
+        echo "## Dependency Compatibility Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "This job tests if the project works with the latest compatible dependency versions." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Updated Dependencies" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        npm outdated || true >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
