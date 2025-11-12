@@ -10,7 +10,7 @@ This directory contains CI/CD workflows for the Coral.js project.
 Main continuous integration workflow that runs on every push and pull request.
 
 **Jobs:**
-- **Test** - Runs tests on Node.js 16.x, 18.x, and 20.x
+- **Test** - Runs tests on Node.js 10.x, 12.x, 14.x, 16.x, 18.x, and 20.x
 - **Lint** - Validates JavaScript syntax across all source files
 - **Security** - Runs npm audit to check for vulnerabilities
 - **Build** - Verifies CLI executable and runs final test suite

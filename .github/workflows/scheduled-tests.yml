@@ -19,7 +19,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
+        node-version: '16.x'
         cache: 'npm'
 
     - name: Install dependencies
@@ -59,7 +59,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [20.x]
+        node-version: [10.x, 16.x, 20.x]
 
     steps:
     - name: Checkout code
@@ -95,7 +95,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20.x'
+        node-version: '16.x'
 
     - name: Install dependencies (exact versions)
       run: npm ci
