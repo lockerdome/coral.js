@@ -18,7 +18,7 @@
     "optimist": "~0.5.2",
     "suggest-it": "0.0.1",
     "tosource": "~0.1.1",
-    "uglify-js": "~2.4.24",
+    "uglify-js": "^3.19.3",
     "es6-promise": "~4.2.5"
   },
   "devDependencies": {
