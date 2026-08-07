@@ -108,9 +108,9 @@ CompilationContext.prototype._create_optimized_representation = function (val) {
   var needs_minification = this.needs_minification();
   if (typeof val === 'object' && val !== null) {
     if (needs_minification) {
-      return uglify.minify('sliceThisAndEqualOff=' + toSource(val, null, '') + ';', {
-        fromString: true
-      }).code.slice(21, -1) || '{}';
+      var result = uglify.minify('sliceThisAndEqualOff=' + toSource(val, null, '') + ';');
+      if (result.error) throw result.error;
+      return result.code.slice(21, -1) || '{}';
     } else {
       return toSource(val, null, '');
     }
